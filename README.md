@@ -128,17 +128,6 @@ enabled = true
 # auto response settings
 ```
 
-## Examples
-
-The `beeper-desktop-api-examples/` directory contains example implementations demonstrating various API capabilities:
-
-- `send_message.rs` - Sending messages to chats
-- `fetch_accounts.rs` - Retrieving account information
-- `fetch_chats.rs` - Listing available chats
-- `fetch_messages.rs` - Fetching message history
-- `focus_app.rs` - Focusing the Beeper application
-- `search.rs` - Searching messages
-
 ## API Reference
 
 The project uses the `beeper-desktop-api` crate which provides:
