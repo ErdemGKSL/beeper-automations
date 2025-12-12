@@ -159,16 +159,43 @@ download_binaries() {
     
     # Download service binary
     print_info "Downloading $service_binary..."
-    if ! curl -L -o "$SERVICE_NAME$SUFFIX" "${base_url}/${service_binary}"; then
+    print_info "URL: ${base_url}/${service_binary}"
+    
+    if ! curl -f -L -o "$SERVICE_NAME$SUFFIX" "${base_url}/${service_binary}"; then
         print_error "Failed to download service binary"
+        print_error "URL: ${base_url}/${service_binary}"
+        print_error "This usually means the binary for your platform doesn't exist in the release"
+        rm -rf "$tmp_dir"
+        exit 1
+    fi
+    
+    # Verify it's actually a binary and not an error page
+    if file "$SERVICE_NAME$SUFFIX" | grep -q "text"; then
+        print_error "Downloaded file is not a binary!"
+        print_error "Content:"
+        head -n 5 "$SERVICE_NAME$SUFFIX"
+        print_error ""
+        print_error "The binary for $TARGET may not be available in this release."
         rm -rf "$tmp_dir"
         exit 1
     fi
     
     # Download configurator binary
     print_info "Downloading $configurator_binary..."
-    if ! curl -L -o "$CONFIGURATOR_NAME$SUFFIX" "${base_url}/${configurator_binary}"; then
+    print_info "URL: ${base_url}/${configurator_binary}"
+    
+    if ! curl -f -L -o "$CONFIGURATOR_NAME$SUFFIX" "${base_url}/${configurator_binary}"; then
         print_error "Failed to download configurator binary"
+        print_error "URL: ${base_url}/${configurator_binary}"
+        rm -rf "$tmp_dir"
+        exit 1
+    fi
+    
+    # Verify configurator is also a binary
+    if file "$CONFIGURATOR_NAME$SUFFIX" | grep -q "text"; then
+        print_error "Downloaded configurator is not a binary!"
+        print_error "Content:"
+        head -n 5 "$CONFIGURATOR_NAME$SUFFIX"
         rm -rf "$tmp_dir"
         exit 1
     fi
