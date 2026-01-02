@@ -1,6 +1,6 @@
 use crate::config::Config;
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
@@ -46,8 +46,10 @@ impl MainScreen {
             terminal.draw(|f| self.ui(f))?;
 
             if let Event::Key(key) = event::read()? {
-                if let Some(choice) = self.handle_key(key) {
-                    return Ok(Some(choice));
+                if key.kind == KeyEventKind::Press {
+                    if let Some(choice) = self.handle_key(key) {
+                        return Ok(Some(choice));
+                    }
                 }
             }
         }

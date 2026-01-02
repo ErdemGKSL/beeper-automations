@@ -1,6 +1,6 @@
 use crate::notifications::NotificationAutomation;
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
@@ -238,8 +238,10 @@ impl NotificationScreen {
             terminal.draw(|f| self.ui(f))?;
 
             if let Event::Key(key) = event::read()? {
-                if self.handle_key(key)? {
-                    return Ok(true);
+                if key.kind == KeyEventKind::Press {
+                    if self.handle_key(key)? {
+                        return Ok(true);
+                    }
                 }
             }
         }

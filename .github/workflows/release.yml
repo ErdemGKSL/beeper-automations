@@ -113,6 +113,12 @@ jobs:
         cargo build --release --target ${{ matrix.target }} --bin auto-beeper-configurator
       shell: bash
     
+    - name: Build Windows service binary (Windows only)
+      if: matrix.os == 'windows-latest'
+      run: |
+        cargo build --release --target ${{ matrix.target }} --features windows-service --bin auto-beeper-windows-service
+      shell: bash
+    
     - name: Create release directory
       run: mkdir -p release
     
@@ -120,6 +126,12 @@ jobs:
       run: |
         cp target/${{ matrix.target }}/release/auto-beeper-service${{ matrix.suffix }} release/auto-beeper-service-${{ matrix.target }}${{ matrix.suffix }}
         cp target/${{ matrix.target }}/release/auto-beeper-configurator${{ matrix.suffix }} release/auto-beeper-configurator-${{ matrix.target }}${{ matrix.suffix }}
+      shell: bash
+    
+    - name: Copy Windows service binary (Windows only)
+      if: matrix.os == 'windows-latest'
+      run: |
+        cp target/${{ matrix.target }}/release/auto-beeper-windows-service${{ matrix.suffix }} release/auto-beeper-windows-service-${{ matrix.target }}${{ matrix.suffix }}
       shell: bash
     
     - name: Upload artifacts

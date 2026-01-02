@@ -6,6 +6,7 @@ $ErrorActionPreference = "Stop"
 # Configuration
 $GITHUB_REPO = "ErdemGKSL/beeper-auotmations"
 $SERVICE_NAME = "auto-beeper-service"
+$WINDOWS_SERVICE_NAME = "auto-beeper-windows-service"
 $CONFIGURATOR_NAME = "auto-beeper-configurator"
 $INSTALL_DIR = "$env:ProgramFiles\BeeperAutomations"
 $SERVICE_DISPLAY_NAME = "Beeper Automations Service"
@@ -88,17 +89,23 @@ function Get-Binaries {
     
     $baseUrl = "https://github.com/$GITHUB_REPO/releases/download/$Tag"
     $serviceBinary = "$SERVICE_NAME-$Target.exe"
+    $windowsServiceBinary = "$WINDOWS_SERVICE_NAME-$Target.exe"
     $configuratorBinary = "$CONFIGURATOR_NAME-$Target.exe"
     
     $serviceUrl = "$baseUrl/$serviceBinary"
+    $windowsServiceUrl = "$baseUrl/$windowsServiceBinary"
     $configuratorUrl = "$baseUrl/$configuratorBinary"
     
     $servicePath = Join-Path $tempDir "$SERVICE_NAME.exe"
+    $windowsServicePath = Join-Path $tempDir "$WINDOWS_SERVICE_NAME.exe"
     $configuratorPath = Join-Path $tempDir "$CONFIGURATOR_NAME.exe"
     
     try {
         Write-InfoMessage "Downloading service binary..."
         Invoke-WebRequest -Uri $serviceUrl -OutFile $servicePath -UseBasicParsing
+        
+        Write-InfoMessage "Downloading Windows service binary..."
+        Invoke-WebRequest -Uri $windowsServiceUrl -OutFile $windowsServicePath -UseBasicParsing
         
         Write-InfoMessage "Downloading configurator binary..."
         Invoke-WebRequest -Uri $configuratorUrl -OutFile $configuratorPath -UseBasicParsing
@@ -126,6 +133,7 @@ function Install-Binaries {
     
     # Copy binaries
     Copy-Item -Path (Join-Path $SourceDir "$SERVICE_NAME.exe") -Destination $INSTALL_DIR -Force
+    Copy-Item -Path (Join-Path $SourceDir "$WINDOWS_SERVICE_NAME.exe") -Destination $INSTALL_DIR -Force
     Copy-Item -Path (Join-Path $SourceDir "$CONFIGURATOR_NAME.exe") -Destination $INSTALL_DIR -Force
     
     Write-InfoMessage "Binaries installed successfully"
@@ -135,26 +143,27 @@ function Install-Binaries {
 function Install-WindowsService {
     Write-InfoMessage "Setting up Windows service..."
     
-    $servicePath = Join-Path $INSTALL_DIR "$SERVICE_NAME.exe"
+    $servicePath = Join-Path $INSTALL_DIR "$WINDOWS_SERVICE_NAME.exe"
     
     # Check if service already exists
-    $existingService = Get-Service -Name "AutoBeeperService" -ErrorAction SilentlyContinue
+    $existingService = Get-Service -Name "BeeperAutomations" -ErrorAction SilentlyContinue
     
     if ($existingService) {
         Write-InfoMessage "Service already exists, stopping and removing..."
         
         if ($existingService.Status -eq "Running") {
-            Stop-Service -Name "AutoBeeperService" -Force
+            Stop-Service -Name "BeeperAutomations" -Force
+            Start-Sleep -Seconds 2
         }
         
         # Remove existing service
-        sc.exe delete "AutoBeeperService" | Out-Null
+        sc.exe delete "BeeperAutomations" | Out-Null
         Start-Sleep -Seconds 2
     }
     
     # Create new service
     Write-InfoMessage "Creating service..."
-    $createResult = sc.exe create "AutoBeeperService" `
+    $createResult = sc.exe create "BeeperAutomations" `
         binPath= "`"$servicePath`"" `
         DisplayName= "$SERVICE_DISPLAY_NAME" `
         start= auto `
@@ -166,18 +175,17 @@ function Install-WindowsService {
     }
     
     # Set service description
-    sc.exe description "AutoBeeperService" "$SERVICE_DESCRIPTION" | Out-Null
+    sc.exe description "BeeperAutomations" "$SERVICE_DESCRIPTION" | Out-Null
     
-    # Configure service recovery options
-    sc.exe failure "AutoBeeperService" reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
+    # Configure service recovery options (restart on failure)
+    sc.exe failure "BeeperAutomations" reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
     
     # Start the service
     Write-InfoMessage "Starting service..."
-    Start-Service -Name "AutoBeeperService"
+    Start-Service -Name "BeeperAutomations"
     
     Write-InfoMessage "Service installed and started successfully"
-    Write-InfoMessage "Use 'sc query AutoBeeperService' to check service status"
-    Write-InfoMessage "Use 'Get-EventLog -LogName Application -Source AutoBeeperService' to view logs"
+    Write-InfoMessage "Use 'sc query BeeperAutomations' to check service status"
 }
 
 # Add to PATH
@@ -252,17 +260,19 @@ function Main {
         
         Write-Host ""
         Write-InfoMessage "✓ Installation complete!"
-        Write-InfoMessage "Service binary: $INSTALL_DIR\$SERVICE_NAME.exe"
+        Write-InfoMessage "Service binary (console): $INSTALL_DIR\$SERVICE_NAME.exe"
+        Write-InfoMessage "Service binary (Windows): $INSTALL_DIR\$WINDOWS_SERVICE_NAME.exe"
         Write-InfoMessage "Configurator: $INSTALL_DIR\$CONFIGURATOR_NAME.exe"
         Write-Host ""
-        Write-InfoMessage "The service is now running in the background."
+        Write-InfoMessage "The service is now running in the background as a native Windows service."
         Write-InfoMessage "You can manage it using:"
-        Write-InfoMessage "  - Start: Start-Service AutoBeeperService"
-        Write-InfoMessage "  - Stop: Stop-Service AutoBeeperService"
-        Write-InfoMessage "  - Status: Get-Service AutoBeeperService"
-        Write-InfoMessage "  - Restart: Restart-Service AutoBeeperService"
+        Write-InfoMessage "  - Start: Start-Service BeeperAutomations"
+        Write-InfoMessage "  - Stop: Stop-Service BeeperAutomations"
+        Write-InfoMessage "  - Status: Get-Service BeeperAutomations"
+        Write-InfoMessage "  - Restart: Restart-Service BeeperAutomations"
         Write-Host ""
         Write-InfoMessage "Run '$CONFIGURATOR_NAME' to configure automations"
+        Write-InfoMessage "The service will automatically pick up configuration changes"
         Write-Host ""
     }
     finally {
