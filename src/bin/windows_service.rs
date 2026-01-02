@@ -118,9 +118,3 @@ fn main() -> windows_service::Result<()> {
     service_dispatcher::start(SERVICE_NAME, ffi_service_main)?;
     Ok(())
 }
-
-#[cfg(not(windows))]
-fn main() {
-    eprintln!("This binary is only supported on Windows.");
-    std::process::exit(1);
-}

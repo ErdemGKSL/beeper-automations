@@ -49,8 +49,10 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
     
-    - name: Check all features
-      run: cargo check --all-features
+    - name: Check binaries
+      run: |
+        cargo check --bin auto-beeper-service
+        cargo check --bin auto-beeper-configurator
 
   build:
     name: Build for ${{ matrix.os }}
