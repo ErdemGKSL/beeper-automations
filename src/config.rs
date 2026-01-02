@@ -66,8 +66,20 @@ impl Default for Config {
 impl Config {
     /// Get the configuration file path
     pub fn config_file_path() -> Result<PathBuf, ConfigError> {
-        let config_dir = dirs::config_dir().ok_or(ConfigError::NoConfigDir)?;
-        Ok(config_dir.join("beeper-automations").join("config.toml"))
+        #[cfg(windows)]
+        {
+            let program_data = std::env::var("PROGRAMDATA")
+                .unwrap_or_else(|_| "C:\\ProgramData".to_string());
+            return Ok(PathBuf::from(program_data)
+                .join("BeeperAutomations")
+                .join("config.toml"));
+        }
+        
+        #[cfg(not(windows))]
+        {
+            let config_dir = dirs::config_dir().ok_or(ConfigError::NoConfigDir)?;
+            Ok(config_dir.join("beeper-automations").join("config.toml"))
+        }
     }
 
     /// Load configuration from file, creating default if it doesn't exist

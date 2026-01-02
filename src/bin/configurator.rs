@@ -3,9 +3,49 @@ use beeper_auotmations::config::Config;
 use beeper_auotmations::app_state::SharedAppState;
 use beeper_auotmations::tui::{show_config_screen, show_main_screen, show_loading_screen, show_notification_screen, MenuOption};
 use beeper_auotmations::api_check::validate_api;
+use std::path::PathBuf;
+
+fn get_old_config_path() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        dirs::config_dir().map(|dir| dir.join("beeper-automations").join("config.toml"))
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+fn migrate_old_config() -> Result<()> {
+    if let Some(old_path) = get_old_config_path() {
+        if old_path.exists() {
+            let new_path = Config::config_file_path()?;
+            
+            // Only migrate if new location doesn't exist or is empty
+            if !new_path.exists() {
+                println!("📦 Migrating configuration from old location...");
+                println!("   From: {:?}", old_path);
+                println!("   To:   {:?}", new_path);
+                
+                // Create parent directories for new location
+                if let Some(parent) = new_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                
+                // Copy the config file
+                std::fs::copy(&old_path, &new_path)?;
+                println!("✓ Configuration migrated successfully!\n");
+            }
+        }
+    }
+    Ok(())
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Attempt to migrate old config if it exists
+    migrate_old_config().ok();
+    
     // Load configuration
     let config = Config::load()?;
     let default_config = config.clone();
