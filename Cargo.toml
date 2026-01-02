@@ -29,6 +29,7 @@ thiserror = "2.0.17"
 uuid = { version = "1.19", features = ["v4"] }
 notify = "6.1"
 chrono = "0.4"
+rodio = "0.19"
 
 [target.'cfg(windows)'.dependencies]
 windows-service = { version = "0.7", optional = true }

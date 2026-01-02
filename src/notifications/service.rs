@@ -7,6 +7,66 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
+use std::path::Path;
+
+/// Play a sound file (supports .wav and .mp3)
+fn play_sound(sound_path: &str) {
+    use rodio::{Decoder, OutputStream, Sink};
+    use std::fs::File;
+    use std::io::BufReader;
+    
+    let path = Path::new(sound_path);
+    
+    // If relative path, try to resolve from common locations
+    let resolved_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        // Try current directory first
+        if Path::new(sound_path).exists() {
+            Path::new(sound_path).to_path_buf()
+        } else {
+            // Try in ProgramData/BeeperAutomations/sounds
+            let program_data = std::env::var("PROGRAMDATA")
+                .unwrap_or_else(|_| "C:\\ProgramData".to_string());
+            let sounds_dir = Path::new(&program_data).join("BeeperAutomations").join("sounds");
+            sounds_dir.join(sound_path)
+        }
+    };
+    
+    if !resolved_path.exists() {
+        eprintln!("Sound file not found: {:?}", resolved_path);
+        return;
+    }
+    
+    // Spawn a thread to play sound asynchronously
+    let resolved_path = resolved_path.clone();
+    std::thread::spawn(move || {
+        match File::open(&resolved_path) {
+            Ok(file) => {
+                let buf_reader = BufReader::new(file);
+                match Decoder::new(buf_reader) {
+                    Ok(source) => {
+                        // Create output stream and sink
+                        match OutputStream::try_default() {
+                            Ok((_stream, stream_handle)) => {
+                                match Sink::try_new(&stream_handle) {
+                                    Ok(sink) => {
+                                        sink.append(source);
+                                        sink.sleep_until_end();
+                                    }
+                                    Err(e) => eprintln!("Failed to create audio sink: {}", e),
+                                }
+                            }
+                            Err(e) => eprintln!("Failed to create audio output stream: {}", e),
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to decode sound file: {}", e),
+                }
+            }
+            Err(e) => eprintln!("Failed to open sound file {:?}: {}", resolved_path, e),
+        }
+    });
+}
 
 #[allow(unused)]
 #[derive(Debug, Clone)]
@@ -401,7 +461,13 @@ impl NotificationService {
                                                         }
                                                     }
                                                     
-                                                    // TODO: Trigger notification sound if configured
+                                                    // Trigger notification sound if configured
+                                                    if let Some(sound_path) = &automation.notification_sound {
+                                                        if !sound_path.is_empty() {
+                                                            println!("▶ Playing notification sound: {}", sound_path);
+                                                            play_sound(sound_path);
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -598,7 +664,13 @@ impl NotificationService {
                                             }
                                         }
                                         
-                                        // TODO: Trigger notification sound if configured
+                                        // Trigger notification sound if configured
+                                        if let Some(sound_path) = &automation.notification_sound {
+                                            if !sound_path.is_empty() {
+                                                println!("▶ Playing notification sound: {}", sound_path);
+                                                play_sound(sound_path);
+                                            }
+                                        }
                                     }
                                 }
                             }
