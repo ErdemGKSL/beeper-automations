@@ -131,16 +131,47 @@ function Install-Binaries {
         New-Item -ItemType Directory -Path $INSTALL_DIR -Force | Out-Null
     }
     
-    # Copy binaries
-    Copy-Item -Path (Join-Path $SourceDir "$SERVICE_NAME.exe") -Destination $INSTALL_DIR -Force
-    Copy-Item -Path (Join-Path $SourceDir "$WINDOWS_SERVICE_NAME.exe") -Destination $INSTALL_DIR -Force
-    Copy-Item -Path (Join-Path $SourceDir "$CONFIGURATOR_NAME.exe") -Destination $INSTALL_DIR -Force
+    # Check if service is running and stop it
+    $existingService = Get-Service -Name "BeeperAutomations" -ErrorAction SilentlyContinue
+    $wasRunning = $false
     
-    Write-InfoMessage "Binaries installed successfully"
+    if ($existingService) {
+        if ($existingService.Status -eq "Running") {
+            Write-InfoMessage "Stopping existing service for update..."
+            Stop-Service -Name "BeeperAutomations" -Force
+            Start-Sleep -Seconds 3
+            $wasRunning = $true
+        }
+    }
+    
+    # Copy binaries
+    try {
+        Copy-Item -Path (Join-Path $SourceDir "$SERVICE_NAME.exe") -Destination $INSTALL_DIR -Force
+        Copy-Item -Path (Join-Path $SourceDir "$WINDOWS_SERVICE_NAME.exe") -Destination $INSTALL_DIR -Force
+        Copy-Item -Path (Join-Path $SourceDir "$CONFIGURATOR_NAME.exe") -Destination $INSTALL_DIR -Force
+        
+        Write-InfoMessage "Binaries installed successfully"
+    }
+    catch {
+        Write-ErrorMessage "Failed to copy binaries: $_"
+        
+        # Try to restart service if it was running
+        if ($wasRunning) {
+            Write-InfoMessage "Attempting to restart service..."
+            Start-Service -Name "BeeperAutomations" -ErrorAction SilentlyContinue
+        }
+        
+        throw
+    }
+    
+    # Return service state
+    return $wasRunning
 }
 
 # Setup Windows service
 function Install-WindowsService {
+    param([bool]$WasRunning = $false)
+    
     Write-InfoMessage "Setting up Windows service..."
     
     $servicePath = Join-Path $INSTALL_DIR "$WINDOWS_SERVICE_NAME.exe"
@@ -149,42 +180,72 @@ function Install-WindowsService {
     $existingService = Get-Service -Name "BeeperAutomations" -ErrorAction SilentlyContinue
     
     if ($existingService) {
-        Write-InfoMessage "Service already exists, stopping and removing..."
+        Write-InfoMessage "Service already exists..."
         
+        # If it's still running somehow, stop it
         if ($existingService.Status -eq "Running") {
             Stop-Service -Name "BeeperAutomations" -Force
             Start-Sleep -Seconds 2
         }
         
-        # Remove existing service
-        sc.exe delete "BeeperAutomations" | Out-Null
-        Start-Sleep -Seconds 2
+        # Only recreate if not updating an existing installation
+        if (-not $WasRunning) {
+            Write-InfoMessage "Removing old service configuration..."
+            sc.exe delete "BeeperAutomations" | Out-Null
+            Start-Sleep -Seconds 2
+            
+            # Create new service
+            Write-InfoMessage "Creating service..."
+            $createResult = sc.exe create "BeeperAutomations" `
+                binPath= "`"$servicePath`"" `
+                DisplayName= "$SERVICE_DISPLAY_NAME" `
+                start= auto `
+                obj= "LocalSystem"
+            
+            if ($LASTEXITCODE -ne 0) {
+                Write-ErrorMessage "Failed to create service: $createResult"
+                exit 1
+            }
+            
+            # Set service description
+            sc.exe description "BeeperAutomations" "$SERVICE_DESCRIPTION" | Out-Null
+            
+            # Configure service recovery options (restart on failure)
+            sc.exe failure "BeeperAutomations" reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
+        }
+        
+        # Start the service (whether it's new or updated)
+        Write-InfoMessage "Starting service..."
+        Start-Service -Name "BeeperAutomations"
+        Write-InfoMessage "Service started successfully"
+    }
+    else {
+        # Service doesn't exist, create it
+        Write-InfoMessage "Creating service..."
+        $createResult = sc.exe create "BeeperAutomations" `
+            binPath= "`"$servicePath`"" `
+            DisplayName= "$SERVICE_DISPLAY_NAME" `
+            start= auto `
+            obj= "LocalSystem"
+        
+        if ($LASTEXITCODE -ne 0) {
+            Write-ErrorMessage "Failed to create service: $createResult"
+            exit 1
+        }
+        
+        # Set service description
+        sc.exe description "BeeperAutomations" "$SERVICE_DESCRIPTION" | Out-Null
+        
+        # Configure service recovery options (restart on failure)
+        sc.exe failure "BeeperAutomations" reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
+        
+        # Start the service
+        Write-InfoMessage "Starting service..."
+        Start-Service -Name "BeeperAutomations"
+        
+        Write-InfoMessage "Service installed and started successfully"
     }
     
-    # Create new service
-    Write-InfoMessage "Creating service..."
-    $createResult = sc.exe create "BeeperAutomations" `
-        binPath= "`"$servicePath`"" `
-        DisplayName= "$SERVICE_DISPLAY_NAME" `
-        start= auto `
-        obj= "LocalSystem"
-    
-    if ($LASTEXITCODE -ne 0) {
-        Write-ErrorMessage "Failed to create service: $createResult"
-        exit 1
-    }
-    
-    # Set service description
-    sc.exe description "BeeperAutomations" "$SERVICE_DESCRIPTION" | Out-Null
-    
-    # Configure service recovery options (restart on failure)
-    sc.exe failure "BeeperAutomations" reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
-    
-    # Start the service
-    Write-InfoMessage "Starting service..."
-    Start-Service -Name "BeeperAutomations"
-    
-    Write-InfoMessage "Service installed and started successfully"
     Write-InfoMessage "Use 'sc query BeeperAutomations' to check service status"
 }
 
@@ -249,14 +310,14 @@ function Main {
     $tempDir = Get-Binaries -Tag $tag -Target $target
     
     try {
-        # Install binaries
-        Install-Binaries -SourceDir $tempDir
+        # Install binaries (returns true if service was running)
+        $wasRunning = Install-Binaries -SourceDir $tempDir
         
         # Add to PATH
         Add-ToPath
         
-        # Setup service
-        Install-WindowsService
+        # Setup service (pass whether it was running)
+        Install-WindowsService -WasRunning $wasRunning
         
         Write-Host ""
         Write-InfoMessage "✓ Installation complete!"
