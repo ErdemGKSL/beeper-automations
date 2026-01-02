@@ -252,11 +252,11 @@ function Main {
         # Install binaries
         Install-Binaries -SourceDir $tempDir
         
-        # Setup service
-        Install-WindowsService
-        
         # Add to PATH
         Add-ToPath
+        
+        # Setup service
+        Install-WindowsService
         
         Write-Host ""
         Write-InfoMessage "✓ Installation complete!"
