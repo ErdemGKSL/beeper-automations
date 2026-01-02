@@ -1,6 +1,8 @@
 #![cfg(windows)]
 
 use std::ffi::OsString;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::time::Duration;
 use windows_service::{
     define_windows_service,
@@ -15,18 +17,51 @@ use windows_service::{
 const SERVICE_NAME: &str = "BeeperAutomations";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
-define_windows_service!(ffi_service_main, service_main);
-
-fn service_main(_arguments: Vec<OsString>) {
-    if let Err(e) = run_service() {
-        // Log error to Windows Event Log or a file
-        eprintln!("Service error: {}", e);
+fn log_to_file(msg: &str) {
+    let log_path = std::env::var("PROGRAMDATA")
+        .unwrap_or_else(|_| "C:\\ProgramData".to_string())
+        + "\\BeeperAutomations\\service.log";
+    
+    if let Ok(mut f) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+    {
+        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+        let _ = writeln!(f, "[{}] {}", timestamp, msg);
     }
 }
 
+define_windows_service!(ffi_service_main, service_main);
+
+fn service_main(_arguments: Vec<OsString>) {
+    log_to_file("Windows service wrapper started");
+    if let Err(e) = run_service() {
+        log_to_file(&format!("Service error: {}", e));
+    }
+    log_to_file("Windows service wrapper exiting");
+}
+
 fn run_service() -> windows_service::Result<()> {
+    log_to_file("run_service() called");
+    
+    // Set working directory to ProgramData
+    let work_dir = std::env::var("PROGRAMDATA")
+        .unwrap_or_else(|_| "C:\\ProgramData".to_string())
+        + "\\BeeperAutomations";
+    
+    if let Err(e) = std::fs::create_dir_all(&work_dir) {
+        log_to_file(&format!("Failed to create work directory: {}", e));
+    }
+    
+    if let Err(e) = std::env::set_current_dir(&work_dir) {
+        log_to_file(&format!("Failed to set working directory: {}", e));
+    } else {
+        log_to_file(&format!("Working directory set to: {}", work_dir));
+    }
+    
     // Create a channel to handle service stop events
-    let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel::<()>(1);
+    let (shutdown_tx, shutdown_rx) = tokio::sync::mpsc::channel::<()>(1);
 
     // Define the service control handler
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
@@ -43,6 +78,8 @@ fn run_service() -> windows_service::Result<()> {
 
     // Register the service control handler
     let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)?;
+
+    log_to_file("Service control handler registered");
 
     // Tell Windows that the service is starting
     status_handle.set_service_status(ServiceStatus {
@@ -74,19 +111,22 @@ fn run_service() -> windows_service::Result<()> {
         process_id: None,
     })?;
 
+    log_to_file("Service status set to Running");
+    log_to_file("About to call beeper_auotmations::run_service_with_shutdown()");
+
     // Run the service and wait for shutdown signal
     runtime.block_on(async {
         tokio::select! {
-            result = beeper_auotmations::run_service() => {
+            result = beeper_auotmations::run_service_with_shutdown(shutdown_rx) => {
                 if let Err(e) = result {
-                    eprintln!("Service error: {}", e);
+                    log_to_file(&format!("Service error: {}", e));
                 }
-            }
-            _ = shutdown_rx.recv() => {
-                println!("Received shutdown signal from Windows Service Manager");
+                log_to_file("run_service_with_shutdown() RETURNED");
             }
         }
     });
+
+    log_to_file("Service loop exited, initiating shutdown");
 
     // Tell Windows that the service is stopping
     status_handle.set_service_status(ServiceStatus {

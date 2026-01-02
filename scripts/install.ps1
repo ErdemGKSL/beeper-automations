@@ -225,7 +225,7 @@ function Add-ToPath {
 function Main {
     Write-Host ""
     Write-Host "╔════════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "║  Beeper Automations Installer         ║" -ForegroundColor Cyan
+    Write-Host "║  Beeper Automations Installer          ║" -ForegroundColor Cyan
     Write-Host "║           Windows Edition              ║" -ForegroundColor Cyan
     Write-Host "╚════════════════════════════════════════╝" -ForegroundColor Cyan
     Write-Host ""
