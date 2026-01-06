@@ -9,13 +9,13 @@ A powerful automation framework for the Beeper Desktop messenger app using its l
 Run the following command in your terminal:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ErdemGKSL/beeper-auotmations/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ErdemGKSL/beeper-automations/main/scripts/install.sh | bash
 ```
 
 Or download and run manually:
 
 ```bash
-wget https://raw.githubusercontent.com/ErdemGKSL/beeper-auotmations/main/scripts/install.sh
+wget https://raw.githubusercontent.com/ErdemGKSL/beeper-automations/main/scripts/install.sh
 chmod +x install.sh
 ./install.sh
 ```
@@ -30,19 +30,19 @@ This will:
 Run the following command in PowerShell or CMD as **Administrator**:
 
 ```powershell
-powershell -c "irm https://raw.githubusercontent.com/ErdemGKSL/beeper-auotmations/main/scripts/install.ps1 | iex"
+powershell -c "irm https://raw.githubusercontent.com/ErdemGKSL/beeper-automations/main/scripts/install.ps1 | iex"
 ```
 
 Alternatively, you can run directly in PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/ErdemGKSL/beeper-auotmations/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/ErdemGKSL/beeper-automations/main/scripts/install.ps1 | iex
 ```
 
 Or download and run manually:
 
 ```powershell
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/ErdemGKSL/beeper-auotmations/main/scripts/install.ps1" -OutFile install.ps1
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/ErdemGKSL/beeper-automations/main/scripts/install.ps1" -OutFile install.ps1
 .\install.ps1
 ```
 
@@ -54,7 +54,7 @@ This will:
 
 ### Manual Installation
 
-Download the latest release binaries from the [releases page](https://github.com/ErdemGKSL/beeper-auotmations/releases) for your platform.
+Download the latest release binaries from the [releases page](https://github.com/ErdemGKSL/beeper-automations/releases) for your platform.
 
 ## Overview
 
