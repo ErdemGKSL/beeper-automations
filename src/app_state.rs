@@ -35,21 +35,36 @@ impl SharedAppState {
 
     /// Update the API configuration and recreate the client
     pub fn update_api(&self, url: String, token: String) -> Result<(), String> {
-        let state = self.0.write().map_err(|e| format!("Failed to acquire write lock: {}", e))?;
-        let mut config = state.config.write().map_err(|e| format!("Failed to acquire config write lock: {}", e))?;
+        let state = self
+            .0
+            .write()
+            .map_err(|e| format!("Failed to acquire write lock: {}", e))?;
+        let mut config = state
+            .config
+            .write()
+            .map_err(|e| format!("Failed to acquire config write lock: {}", e))?;
         config.api.url = url.clone();
         config.api.token = token.clone();
         drop(config); // Release the config lock before acquiring client lock
-        
-        let mut client = state.client.write().map_err(|e| format!("Failed to acquire client write lock: {}", e))?;
+
+        let mut client = state
+            .client
+            .write()
+            .map_err(|e| format!("Failed to acquire client write lock: {}", e))?;
         *client = BeeperClient::new(&token, &url);
         Ok(())
     }
 
     /// Get a cloned config
     pub fn get_config(&self) -> Result<Config, String> {
-        let state = self.0.read().map_err(|e| format!("Failed to acquire read lock: {}", e))?;
-        let config = state.config.read().map_err(|e| format!("Failed to acquire config read lock: {}", e))?;
+        let state = self
+            .0
+            .read()
+            .map_err(|e| format!("Failed to acquire read lock: {}", e))?;
+        let config = state
+            .config
+            .read()
+            .map_err(|e| format!("Failed to acquire config read lock: {}", e))?;
         Ok(config.clone())
     }
 
@@ -58,8 +73,14 @@ impl SharedAppState {
     where
         F: FnOnce(&BeeperClient) -> T,
     {
-        let state = self.0.read().map_err(|e| format!("Failed to acquire read lock: {}", e))?;
-        let client = state.client.read().map_err(|e| format!("Failed to acquire client read lock: {}", e))?;
+        let state = self
+            .0
+            .read()
+            .map_err(|e| format!("Failed to acquire read lock: {}", e))?;
+        let client = state
+            .client
+            .read()
+            .map_err(|e| format!("Failed to acquire client read lock: {}", e))?;
         Ok(f(&client))
     }
 
@@ -68,8 +89,14 @@ impl SharedAppState {
     where
         F: FnOnce(&mut Config) -> (),
     {
-        let state = self.0.read().map_err(|e| format!("Failed to acquire read lock: {}", e))?;
-        let mut config = state.config.write().map_err(|e| format!("Failed to acquire config write lock: {}", e))?;
+        let state = self
+            .0
+            .read()
+            .map_err(|e| format!("Failed to acquire read lock: {}", e))?;
+        let mut config = state
+            .config
+            .write()
+            .map_err(|e| format!("Failed to acquire config write lock: {}", e))?;
         f(&mut config);
         Ok(())
     }
@@ -79,27 +106,43 @@ impl SharedAppState {
     where
         F: FnOnce(&Config) -> T,
     {
-        let state = self.0.read().map_err(|e| format!("Failed to acquire read lock: {}", e))?;
-        let config = state.config.read().map_err(|e| format!("Failed to acquire config read lock: {}", e))?;
+        let state = self
+            .0
+            .read()
+            .map_err(|e| format!("Failed to acquire read lock: {}", e))?;
+        let config = state
+            .config
+            .read()
+            .map_err(|e| format!("Failed to acquire config read lock: {}", e))?;
         Ok(f(&config))
     }
 
     /// Update the entire config and recreate the client if API config changed
     pub fn update_config(&self, new_config: Config) -> Result<(), String> {
-        let state = self.0.read().map_err(|e| format!("Failed to acquire read lock: {}", e))?;
-        
+        let state = self
+            .0
+            .read()
+            .map_err(|e| format!("Failed to acquire read lock: {}", e))?;
+
         // Update config
-        let mut config = state.config.write().map_err(|e| format!("Failed to acquire config write lock: {}", e))?;
-        let api_changed = config.api.url != new_config.api.url || config.api.token != new_config.api.token;
+        let mut config = state
+            .config
+            .write()
+            .map_err(|e| format!("Failed to acquire config write lock: {}", e))?;
+        let api_changed =
+            config.api.url != new_config.api.url || config.api.token != new_config.api.token;
         *config = new_config.clone();
         drop(config); // Release config lock before acquiring client lock
-        
+
         // Recreate client if API config changed
         if api_changed {
-            let mut client = state.client.write().map_err(|e| format!("Failed to acquire client write lock: {}", e))?;
+            let mut client = state
+                .client
+                .write()
+                .map_err(|e| format!("Failed to acquire client write lock: {}", e))?;
             *client = BeeperClient::new(&new_config.api.token, &new_config.api.url);
         }
-        
+
         Ok(())
     }
 }

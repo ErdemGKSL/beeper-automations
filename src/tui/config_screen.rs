@@ -2,12 +2,12 @@ use crate::config::Config;
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
+    Frame, Terminal,
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
-    Frame, Terminal,
 };
 
 /// Application state for the TUI
@@ -196,7 +196,14 @@ impl ConfigScreen {
         f.render_widget(help, chunks[2]);
     }
 
-    fn render_input_field(&self, f: &mut Frame, area: Rect, label: &str, value: &str, active: bool) {
+    fn render_input_field(
+        &self,
+        f: &mut Frame,
+        area: Rect,
+        label: &str,
+        value: &str,
+        active: bool,
+    ) {
         let border_color = if active { Color::Cyan } else { Color::White };
         let style = if active {
             Style::default()

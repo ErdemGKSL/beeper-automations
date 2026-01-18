@@ -2,12 +2,12 @@ use crate::config::Config;
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
+    Frame, Terminal,
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
-    Frame, Terminal,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -203,13 +203,12 @@ impl MainScreen {
             )
             .collect();
 
-        let list = List::new(items)
-            .block(
-                Block::default()
-                    .title("Available Options")
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Cyan)),
-            );
+        let list = List::new(items).block(
+            Block::default()
+                .title("Available Options")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan)),
+        );
 
         f.render_widget(list, area);
     }

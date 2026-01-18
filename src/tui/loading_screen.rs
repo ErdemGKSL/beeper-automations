@@ -1,15 +1,15 @@
 use anyhow::Result;
 use crossterm::{
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
+    Frame, Terminal,
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
-    Frame, Terminal,
 };
 use std::io;
 
@@ -54,14 +54,10 @@ impl LoadingScreen {
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(
-                self.message.clone(),
-                Style::default().fg(Color::White),
-            ),
+            Span::styled(self.message.clone(), Style::default().fg(Color::White)),
         ])];
 
-        let loading = Paragraph::new(text)
-            .alignment(Alignment::Center);
+        let loading = Paragraph::new(text).alignment(Alignment::Center);
 
         f.render_widget(loading, chunks[1]);
 
@@ -88,7 +84,7 @@ where
     // Animate loading screen while waiting
     loop {
         terminal.draw(|f| loading.ui(f))?;
-        
+
         if task.is_finished() {
             break;
         }
@@ -97,10 +93,7 @@ where
     }
 
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen
-    )?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
     // Get the result

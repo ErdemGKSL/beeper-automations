@@ -19,29 +19,28 @@ const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 const MAX_LOG_LINES: usize = 500;
 
 fn log_to_file(msg: &str) {
-    let log_path = std::env::var("PROGRAMDATA")
-        .unwrap_or_else(|_| "C:\\ProgramData".to_string())
+    let log_path = std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string())
         + "\\BeeperAutomations\\service.log";
-    
+
     let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
     let new_line = format!("[{}] {}", timestamp, msg);
-    
+
     // Read existing lines if file exists
     let mut lines = if let Ok(content) = std::fs::read_to_string(&log_path) {
         content.lines().map(String::from).collect::<Vec<_>>()
     } else {
         Vec::new()
     };
-    
+
     // Add new line
     lines.push(new_line);
-    
+
     // Keep only last MAX_LOG_LINES
     if lines.len() > MAX_LOG_LINES {
         let skip_count = lines.len() - MAX_LOG_LINES;
         lines = lines.into_iter().skip(skip_count).collect();
     }
-    
+
     // Write back to file
     if let Ok(mut f) = OpenOptions::new()
         .create(true)
@@ -67,22 +66,21 @@ fn service_main(_arguments: Vec<OsString>) {
 
 fn run_service() -> windows_service::Result<()> {
     log_to_file("run_service() called");
-    
+
     // Set working directory to ProgramData
-    let work_dir = std::env::var("PROGRAMDATA")
-        .unwrap_or_else(|_| "C:\\ProgramData".to_string())
+    let work_dir = std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string())
         + "\\BeeperAutomations";
-    
+
     if let Err(e) = std::fs::create_dir_all(&work_dir) {
         log_to_file(&format!("Failed to create work directory: {}", e));
     }
-    
+
     if let Err(e) = std::env::set_current_dir(&work_dir) {
         log_to_file(&format!("Failed to set working directory: {}", e));
     } else {
         log_to_file(&format!("Working directory set to: {}", work_dir));
     }
-    
+
     // Create a channel to handle service stop events
     let (shutdown_tx, shutdown_rx) = tokio::sync::mpsc::channel::<()>(1);
 

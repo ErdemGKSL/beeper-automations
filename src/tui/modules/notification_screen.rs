@@ -2,12 +2,12 @@ use crate::notifications::NotificationAutomation;
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
+    Frame, Terminal,
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
-    Frame, Terminal,
 };
 
 pub enum ScreenState {
@@ -20,13 +20,13 @@ pub enum ScreenState {
 
 #[derive(Debug, Clone)]
 pub struct ChatSelector {
-    pub available_chats: Vec<(String, String)>,  // (id, name) pairs
+    pub available_chats: Vec<(String, String)>, // (id, name) pairs
     pub filter: String,
     pub selected_index: usize,
-    pub scroll_offset: usize,  // For scrolling through long lists
+    pub scroll_offset: usize, // For scrolling through long lists
     pub loading: bool,
-    pub cursor: Option<String>,  // Cursor for pagination
-    pub has_more: bool,  // Whether there are more chats to fetch
+    pub cursor: Option<String>, // Cursor for pagination
+    pub has_more: bool,         // Whether there are more chats to fetch
 }
 
 impl ChatSelector {
@@ -57,17 +57,17 @@ impl ChatSelector {
 
 #[derive(Debug, Clone)]
 pub struct AutomationForm {
-    pub id: Option<String>,  // None for new, Some for editing
+    pub id: Option<String>, // None for new, Some for editing
     pub name: String,
-    pub chat_ids: Vec<String>,  // Selected chat IDs
+    pub chat_ids: Vec<String>, // Selected chat IDs
     pub automation_type: crate::notifications::AutomationType,
     pub loop_until: crate::notifications::LoopUntil,
-    pub loop_time: String,  // String for input, converted to u64
-    pub check_interval: String,  // String for input
+    pub loop_time: String,      // String for input, converted to u64
+    pub check_interval: String, // String for input
     pub notification_sound: String,
     pub focus_chat: bool,
     pub enabled: bool,
-    pub selected_field: usize,  // Current field being edited
+    pub selected_field: usize, // Current field being edited
 }
 
 impl AutomationForm {
@@ -88,15 +88,20 @@ impl AutomationForm {
     }
 
     fn from_automation(automation: &NotificationAutomation) -> Self {
-        let (loop_until, loop_time, check_interval) = if let Some(loop_config) = &automation.loop_config {
-            (
-                loop_config.until,
-                loop_config.time.map(|t| t.to_string()).unwrap_or_default(),
-                loop_config.check_interval.to_string(),
-            )
-        } else {
-            (crate::notifications::LoopUntil::MessageSeen, String::new(), "3000".to_string())
-        };
+        let (loop_until, loop_time, check_interval) =
+            if let Some(loop_config) = &automation.loop_config {
+                (
+                    loop_config.until,
+                    loop_config.time.map(|t| t.to_string()).unwrap_or_default(),
+                    loop_config.check_interval.to_string(),
+                )
+            } else {
+                (
+                    crate::notifications::LoopUntil::MessageSeen,
+                    String::new(),
+                    "3000".to_string(),
+                )
+            };
 
         Self {
             id: Some(automation.id.clone()),
@@ -129,7 +134,10 @@ impl AutomationForm {
         };
 
         NotificationAutomation {
-            id: self.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+            id: self
+                .id
+                .clone()
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
             name: self.name.clone(),
             chat_ids: self.chat_ids.clone(),
             automation_type: self.automation_type,
@@ -153,9 +161,9 @@ impl AutomationForm {
     fn loop_field_count(&self) -> usize {
         // Loop fields: loop_until, check_interval, and optionally loop_time
         if self.loop_until == crate::notifications::LoopUntil::ForATime {
-            3  // loop_until, loop_time, check_interval
+            3 // loop_until, loop_time, check_interval
         } else {
-            2  // loop_until, check_interval
+            2 // loop_until, check_interval
         }
     }
 }
@@ -174,7 +182,7 @@ impl NotificationScreen {
             .get_config()
             .map(|c| c.notifications.automations.clone())
             .unwrap_or_default();
-        
+
         Self {
             app_state,
             automations,
@@ -185,48 +193,56 @@ impl NotificationScreen {
     }
 
     fn save_to_config(&self) -> Result<()> {
-        self.app_state.with_config_mut(|config| {
-            config.notifications.automations = self.automations.clone();
-        }).map_err(|e| anyhow::anyhow!(e))?;
-        
+        self.app_state
+            .with_config_mut(|config| {
+                config.notifications.automations = self.automations.clone();
+            })
+            .map_err(|e| anyhow::anyhow!(e))?;
+
         // Save to disk
         if let Ok(config) = self.app_state.get_config() {
             config.save()?;
         }
-        
+
         Ok(())
     }
 
-    fn load_chats_sync(&self, cursor: Option<String>) -> (Vec<(String, String)>, Option<String>, bool) {
+    fn load_chats_sync(
+        &self,
+        cursor: Option<String>,
+    ) -> (Vec<(String, String)>, Option<String>, bool) {
         // Get a handle to the current runtime and spawn a blocking task
         let handle = tokio::runtime::Handle::current();
-        
+
         // Use spawn_blocking to avoid blocking the async runtime
         std::thread::scope(|s| {
             let thread_handle = s.spawn(|| {
                 handle.block_on(async {
                     // Fetch one page of chats from Beeper API
-                    self.app_state.with_client(|client| {
-                        // Create a new runtime for the blocking call
-                        tokio::task::block_in_place(|| {
-                            handle.block_on(async {
-                                match client.list_chats(cursor.as_deref(), None).await {
-                                    Ok(response) => {
-                                        let chats: Vec<(String, String)> = response.items
-                                            .iter()
-                                            .map(|chat| (chat.id.clone(), chat.display_name()))
-                                            .collect();
-                                        
-                                        (chats, response.oldest_cursor, response.has_more)
+                    self.app_state
+                        .with_client(|client| {
+                            // Create a new runtime for the blocking call
+                            tokio::task::block_in_place(|| {
+                                handle.block_on(async {
+                                    match client.list_chats(cursor.as_deref(), None).await {
+                                        Ok(response) => {
+                                            let chats: Vec<(String, String)> = response
+                                                .items
+                                                .iter()
+                                                .map(|chat| (chat.id.clone(), chat.display_name()))
+                                                .collect();
+
+                                            (chats, response.oldest_cursor, response.has_more)
+                                        }
+                                        Err(_) => (Vec::new(), None, false),
                                     }
-                                    Err(_) => (Vec::new(), None, false),
-                                }
+                                })
                             })
                         })
-                    }).unwrap_or_else(|_| (Vec::new(), None, false))
+                        .unwrap_or_else(|_| (Vec::new(), None, false))
                 })
             });
-            
+
             thread_handle.join().unwrap()
         })
     }
@@ -270,12 +286,12 @@ impl NotificationScreen {
                 if !self.automations.is_empty() {
                     let deleted_name = self.automations[self.selected_index].name.clone();
                     self.automations.remove(self.selected_index);
-                    
+
                     // Adjust selected_index if needed
                     if self.selected_index >= self.automations.len() && self.selected_index > 0 {
                         self.selected_index -= 1;
                     }
-                    
+
                     // Save to config
                     if let Err(e) = self.save_to_config() {
                         self.message = format!("Warning: Failed to save config: {}", e);
@@ -301,7 +317,8 @@ impl NotificationScreen {
             }
             KeyCode::Enter => {
                 if !self.automations.is_empty() {
-                    let form = AutomationForm::from_automation(&self.automations[self.selected_index]);
+                    let form =
+                        AutomationForm::from_automation(&self.automations[self.selected_index]);
                     self.state = ScreenState::EditingAutomation(form);
                 }
                 Ok(false)
@@ -331,13 +348,13 @@ impl NotificationScreen {
                         let form_clone = form.clone();
                         let mut selector = ChatSelector::new();
                         selector.loading = true;
-                        
+
                         let (chats, cursor, has_more) = self.load_chats_sync(None);
                         selector.available_chats = chats;
                         selector.cursor = cursor;
                         selector.has_more = has_more;
                         selector.loading = false;
-                        
+
                         self.state = ScreenState::SelectingChats(form_clone, selector);
                         return Ok(false);
                     }
@@ -349,7 +366,7 @@ impl NotificationScreen {
                     }
                     _ => {}
                 }
-                
+
                 // Save automation for all other fields
                 if form.name.is_empty() {
                     self.message = "Name cannot be empty!".to_string();
@@ -357,7 +374,7 @@ impl NotificationScreen {
                 }
 
                 let automation = form.to_automation();
-                
+
                 if is_editing {
                     // Find and update existing automation
                     if let Some(pos) = self.automations.iter().position(|a| a.id == automation.id) {
@@ -369,12 +386,12 @@ impl NotificationScreen {
                     self.automations.push(automation);
                     self.message = "Automation created!".to_string();
                 }
-                
+
                 // Save to config
                 if let Err(e) = self.save_to_config() {
                     self.message = format!("Warning: Failed to save config: {}", e);
                 }
-                
+
                 self.state = ScreenState::List;
                 Ok(false)
             }
@@ -396,12 +413,16 @@ impl NotificationScreen {
                     2 => {
                         // Toggle automation type
                         form.automation_type = match form.automation_type {
-                            crate::notifications::AutomationType::Immediate => crate::notifications::AutomationType::Loop,
-                            crate::notifications::AutomationType::Loop => crate::notifications::AutomationType::Immediate,
+                            crate::notifications::AutomationType::Immediate => {
+                                crate::notifications::AutomationType::Loop
+                            }
+                            crate::notifications::AutomationType::Loop => {
+                                crate::notifications::AutomationType::Immediate
+                            }
                         };
                     }
-                    4 => form.focus_chat = !form.focus_chat,  // Toggle focus_chat
-                    5 => form.enabled = !form.enabled,  // Toggle enabled
+                    4 => form.focus_chat = !form.focus_chat, // Toggle focus_chat
+                    5 => form.enabled = !form.enabled,       // Toggle enabled
                     _ => {}
                 }
                 Ok(false)
@@ -409,8 +430,12 @@ impl NotificationScreen {
             KeyCode::Backspace => {
                 // Handle backspace for text fields
                 match form.selected_field {
-                    0 => { form.name.pop(); }
-                    3 => { form.notification_sound.pop(); }
+                    0 => {
+                        form.name.pop();
+                    }
+                    3 => {
+                        form.notification_sound.pop();
+                    }
                     _ => {}
                 }
                 Ok(false)
@@ -480,34 +505,35 @@ impl NotificationScreen {
                     // Scroll down if needed (visible items calculated in render)
                     // We'll adjust scroll_offset in the render method based on visible height
                 }
-                
+
                 // Check if we need to load more chats (outside the if to avoid borrow issues)
                 let should_load = selector.filter.is_empty() && // Only auto-load when not filtering
                                   selector.has_more && 
                                   !selector.loading && 
                                   selector.selected_index >= selector.available_chats.len().saturating_sub(5);
-                
+
                 if should_load {
                     let cursor = selector.cursor.clone();
                     // Temporarily extract selector to avoid borrow issues
-                    let (form_temp, mut selector_temp) = match std::mem::replace(&mut self.state, ScreenState::List) {
-                        ScreenState::SelectingChats(f, s) => (f, s),
-                        other => {
-                            self.state = other;
-                            return Ok(false);
-                        }
-                    };
-                    
+                    let (form_temp, mut selector_temp) =
+                        match std::mem::replace(&mut self.state, ScreenState::List) {
+                            ScreenState::SelectingChats(f, s) => (f, s),
+                            other => {
+                                self.state = other;
+                                return Ok(false);
+                            }
+                        };
+
                     selector_temp.loading = true;
                     let (new_chats, new_cursor, has_more) = self.load_chats_sync(cursor);
                     selector_temp.available_chats.extend(new_chats);
                     selector_temp.cursor = new_cursor;
                     selector_temp.has_more = has_more;
                     selector_temp.loading = false;
-                    
+
                     self.state = ScreenState::SelectingChats(form_temp, selector_temp);
                 }
-                
+
                 Ok(false)
             }
             KeyCode::Backspace => {
@@ -546,11 +572,14 @@ impl NotificationScreen {
             }
             KeyCode::Enter => {
                 // Validate: if ForATime is selected, loop_time is required
-                if form.loop_until == crate::notifications::LoopUntil::ForATime && form.loop_time.is_empty() {
-                    self.message = "Loop Time is required when 'For A Time' is selected!".to_string();
+                if form.loop_until == crate::notifications::LoopUntil::ForATime
+                    && form.loop_time.is_empty()
+                {
+                    self.message =
+                        "Loop Time is required when 'For A Time' is selected!".to_string();
                     return Ok(false);
                 }
-                
+
                 // Save and return to main form
                 let form_clone = form.clone();
                 self.state = if form.id.is_some() {
@@ -579,9 +608,15 @@ impl NotificationScreen {
                 // Space to toggle loop_until
                 if form.selected_field == 0 {
                     form.loop_until = match form.loop_until {
-                        crate::notifications::LoopUntil::MessageSeen => crate::notifications::LoopUntil::Answer,
-                        crate::notifications::LoopUntil::Answer => crate::notifications::LoopUntil::ForATime,
-                        crate::notifications::LoopUntil::ForATime => crate::notifications::LoopUntil::MessageSeen,
+                        crate::notifications::LoopUntil::MessageSeen => {
+                            crate::notifications::LoopUntil::Answer
+                        }
+                        crate::notifications::LoopUntil::Answer => {
+                            crate::notifications::LoopUntil::ForATime
+                        }
+                        crate::notifications::LoopUntil::ForATime => {
+                            crate::notifications::LoopUntil::MessageSeen
+                        }
                     };
                 }
                 Ok(false)
@@ -590,9 +625,15 @@ impl NotificationScreen {
                 // Handle backspace for text fields
                 let is_for_time = form.loop_until == crate::notifications::LoopUntil::ForATime;
                 match form.selected_field {
-                    1 if is_for_time => { form.loop_time.pop(); }
-                    2 if is_for_time => { form.check_interval.pop(); }
-                    1 if !is_for_time => { form.check_interval.pop(); }
+                    1 if is_for_time => {
+                        form.loop_time.pop();
+                    }
+                    2 if is_for_time => {
+                        form.check_interval.pop();
+                    }
+                    1 if !is_for_time => {
+                        form.check_interval.pop();
+                    }
                     _ => {}
                 }
                 Ok(false)
@@ -675,15 +716,20 @@ impl NotificationScreen {
             self.message.clone()
         } else {
             match &self.state {
-                ScreenState::List => "↑↓: Navigate | N: New | Enter: Edit | D: Delete | Q/Esc: Back".to_string(),
+                ScreenState::List => {
+                    "↑↓: Navigate | N: New | Enter: Edit | D: Delete | Q/Esc: Back".to_string()
+                }
                 ScreenState::EditingAutomation(_) => {
-                    "Tab/↑↓: Navigate | Space: Toggle | Enter: Save/Configure | Esc: Cancel".to_string()
+                    "Tab/↑↓: Navigate | Space: Toggle | Enter: Save/Configure | Esc: Cancel"
+                        .to_string()
                 }
                 ScreenState::AddingAutomation(_) => {
-                    "Tab/↑↓: Navigate | Space: Toggle | Enter: Save/Configure | Esc: Cancel".to_string()
+                    "Tab/↑↓: Navigate | Space: Toggle | Enter: Save/Configure | Esc: Cancel"
+                        .to_string()
                 }
                 ScreenState::SelectingChats(_, _) => {
-                    "↑↓: Navigate | Enter: Add | D: Remove Last | Type to filter | Esc: Back".to_string()
+                    "↑↓: Navigate | Enter: Add | D: Remove Last | Type to filter | Esc: Back"
+                        .to_string()
                 }
                 ScreenState::ConfiguringLoop(_) => {
                     "Tab/↑↓: Navigate | Space: Toggle | Enter: Done | Esc: Cancel".to_string()
@@ -725,23 +771,20 @@ impl NotificationScreen {
             .collect();
 
         let list = if items.is_empty() {
-            List::new(vec![ListItem::new(
-                Span::styled(
-                    "No automations configured",
-                    Style::default().fg(Color::DarkGray),
-                )
-            )])
+            List::new(vec![ListItem::new(Span::styled(
+                "No automations configured",
+                Style::default().fg(Color::DarkGray),
+            ))])
         } else {
             List::new(items)
         };
 
-        let list = list
-            .block(
-                Block::default()
-                    .title("Automations")
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Cyan)),
-            );
+        let list = list.block(
+            Block::default()
+                .title("Automations")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan)),
+        );
 
         f.render_widget(list, area);
     }
@@ -796,15 +839,30 @@ impl NotificationScreen {
             .split(inner_area);
 
         // Field 0: Name
-        self.render_text_field(f, form_chunks[0], "Name", &form.name, form.selected_field == 0);
+        self.render_text_field(
+            f,
+            form_chunks[0],
+            "Name",
+            &form.name,
+            form.selected_field == 0,
+        );
 
         // Field 1: Chat IDs (selector button)
         let chat_display = if form.chat_ids.is_empty() {
             "No chats selected (Press Enter to select)".to_string()
         } else {
-            format!("{} chat(s) selected (Press Enter to modify)", form.chat_ids.len())
+            format!(
+                "{} chat(s) selected (Press Enter to modify)",
+                form.chat_ids.len()
+            )
         };
-        self.render_enum_field(f, form_chunks[1], "Chats", &chat_display, form.selected_field == 1);
+        self.render_enum_field(
+            f,
+            form_chunks[1],
+            "Chats",
+            &chat_display,
+            form.selected_field == 1,
+        );
 
         // Field 2: Automation Type (with Loop config button)
         let type_display = if form.automation_type == crate::notifications::AutomationType::Loop {
@@ -812,22 +870,55 @@ impl NotificationScreen {
         } else {
             format!("{}", form.automation_type)
         };
-        self.render_enum_field(f, form_chunks[2], "Type", &type_display, form.selected_field == 2);
+        self.render_enum_field(
+            f,
+            form_chunks[2],
+            "Type",
+            &type_display,
+            form.selected_field == 2,
+        );
 
         // Field 3: Notification Sound
-        self.render_text_field(f, form_chunks[3], "Sound (optional)", &form.notification_sound, form.selected_field == 3);
+        self.render_text_field(
+            f,
+            form_chunks[3],
+            "Sound (optional)",
+            &form.notification_sound,
+            form.selected_field == 3,
+        );
 
         // Field 4: Focus Chat
-        self.render_bool_field(f, form_chunks[4], "Focus Chat", form.focus_chat, form.selected_field == 4);
+        self.render_bool_field(
+            f,
+            form_chunks[4],
+            "Focus Chat",
+            form.focus_chat,
+            form.selected_field == 4,
+        );
 
         // Field 5: Enabled
-        self.render_bool_field(f, form_chunks[5], "Enabled", form.enabled, form.selected_field == 5);
+        self.render_bool_field(
+            f,
+            form_chunks[5],
+            "Enabled",
+            form.enabled,
+            form.selected_field == 5,
+        );
     }
 
-    fn render_text_field(&self, f: &mut Frame, area: Rect, label: &str, value: &str, selected: bool) {
+    fn render_text_field(
+        &self,
+        f: &mut Frame,
+        area: Rect,
+        label: &str,
+        value: &str,
+        selected: bool,
+    ) {
         let display = if value.is_empty() { "_" } else { value };
         let style = if selected {
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::White)
         };
@@ -845,9 +936,18 @@ impl NotificationScreen {
         f.render_widget(paragraph, area);
     }
 
-    fn render_enum_field(&self, f: &mut Frame, area: Rect, label: &str, value: &str, selected: bool) {
+    fn render_enum_field(
+        &self,
+        f: &mut Frame,
+        area: Rect,
+        label: &str,
+        value: &str,
+        selected: bool,
+    ) {
         let style = if selected {
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::White)
         };
@@ -865,10 +965,19 @@ impl NotificationScreen {
         f.render_widget(paragraph, area);
     }
 
-    fn render_bool_field(&self, f: &mut Frame, area: Rect, label: &str, value: bool, selected: bool) {
+    fn render_bool_field(
+        &self,
+        f: &mut Frame,
+        area: Rect,
+        label: &str,
+        value: bool,
+        selected: bool,
+    ) {
         let display = if value { "✓ Yes" } else { "✗ No" };
         let style = if selected {
-            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::White)
         };
@@ -886,7 +995,13 @@ impl NotificationScreen {
         f.render_widget(paragraph, area);
     }
 
-    fn render_chat_selector(&self, f: &mut Frame, area: Rect, form: &AutomationForm, selector: &ChatSelector) {
+    fn render_chat_selector(
+        &self,
+        f: &mut Frame,
+        area: Rect,
+        form: &AutomationForm,
+        selector: &ChatSelector,
+    ) {
         use ratatui::widgets::Clear;
 
         // Calculate modal size
@@ -960,10 +1075,10 @@ impl NotificationScreen {
 
         // Available chats list with scrolling
         let filtered = selector.filtered_chats();
-        
+
         // Calculate visible window size (account for borders)
         let visible_height = chunks[2].height.saturating_sub(2) as usize;
-        
+
         // Adjust scroll offset to keep selected item visible
         let mut scroll_offset = selector.scroll_offset;
         if selector.selected_index >= scroll_offset + visible_height {
@@ -971,11 +1086,11 @@ impl NotificationScreen {
         } else if selector.selected_index < scroll_offset {
             scroll_offset = selector.selected_index;
         }
-        
+
         // Get visible slice of items
         let visible_end = std::cmp::min(scroll_offset + visible_height, filtered.len());
         let visible_items = &filtered[scroll_offset..visible_end];
-        
+
         let items: Vec<ListItem> = visible_items
             .iter()
             .enumerate()
@@ -984,7 +1099,7 @@ impl NotificationScreen {
                 let is_selected = actual_idx == selector.selected_index;
                 let is_added = form.chat_ids.contains(id);
                 let prefix = if is_added { "✓ " } else { "  " };
-                
+
                 let style = if is_selected {
                     Style::default()
                         .fg(Color::Black)
@@ -1068,17 +1183,17 @@ impl NotificationScreen {
         };
 
         let is_for_time = form.loop_until == crate::notifications::LoopUntil::ForATime;
-        
+
         let mut field_constraints = vec![
             Constraint::Length(3), // 0: Loop Until
         ];
-        
+
         if is_for_time {
             field_constraints.push(Constraint::Length(3)); // 1: Loop Time (only for ForATime)
         }
-        
+
         field_constraints.push(Constraint::Length(3)); // Check Interval
-        field_constraints.push(Constraint::Min(1));    // Spacer
+        field_constraints.push(Constraint::Min(1)); // Spacer
 
         let form_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -1086,18 +1201,36 @@ impl NotificationScreen {
             .split(inner_area);
 
         // Field 0: Loop Until
-        self.render_enum_field(f, form_chunks[0], "Loop Until", &format!("{}", form.loop_until), form.selected_field == 0);
+        self.render_enum_field(
+            f,
+            form_chunks[0],
+            "Loop Until",
+            &format!("{}", form.loop_until),
+            form.selected_field == 0,
+        );
 
         let mut chunk_idx = 1;
-        
+
         // Field 1: Loop Time (only shown for ForATime)
         if is_for_time {
-            self.render_text_field(f, form_chunks[chunk_idx], "Loop Time (ms) *required*", &form.loop_time, form.selected_field == 1);
+            self.render_text_field(
+                f,
+                form_chunks[chunk_idx],
+                "Loop Time (ms) *required*",
+                &form.loop_time,
+                form.selected_field == 1,
+            );
             chunk_idx += 1;
         }
 
         // Check Interval (field 1 or 2 depending on is_for_time)
         let check_interval_field_idx = if is_for_time { 2 } else { 1 };
-        self.render_text_field(f, form_chunks[chunk_idx], "Check Interval (ms)", &form.check_interval, form.selected_field == check_interval_field_idx);
+        self.render_text_field(
+            f,
+            form_chunks[chunk_idx],
+            "Check Interval (ms)",
+            &form.check_interval,
+            form.selected_field == check_interval_field_idx,
+        );
     }
 }
