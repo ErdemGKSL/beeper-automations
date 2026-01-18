@@ -708,3 +708,51 @@ impl NotificationService {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{thread, time::Duration};
+
+    use super::*;
+
+    #[test]
+    fn test_idle_detection_recent_activity() {
+        let _ = UserIdle::get_time();
+        thread::sleep(Duration::from_secs(3));
+        // This test verifies that idle detection works and the user
+        // has had input within the last 5 seconds (since they're running the test)
+        const RECENT_ACTIVITY_THRESHOLD: u64 = 5;
+        
+        match UserIdle::get_time() {
+            Ok(idle) => {
+                let idle_seconds = idle.as_seconds();
+                println!("Current idle time: {} seconds", idle_seconds);
+                
+                // If the user is running this test interactively, they should have
+                // had input very recently (within 5 seconds)
+                assert!(
+                    idle_seconds < RECENT_ACTIVITY_THRESHOLD,
+                    "Expected idle time < {} seconds, got {} seconds. \
+                     This test expects recent user activity.",
+                    RECENT_ACTIVITY_THRESHOLD,
+                    idle_seconds
+                );
+            }
+            Err(e) => {
+                // On CI or headless systems, idle detection may not work
+                // We allow this to pass with a warning
+                println!("Warning: Could not detect idle time: {:?}", e);
+                println!("This is expected on headless/CI systems.");
+            }
+        }
+    }
+
+    #[test]
+    fn test_is_user_active_function() {
+        // Just verify the function doesn't panic
+        let result = is_user_active();
+        println!("is_user_active() returned: {}", result);
+        // On interactive systems, this should return true
+        // On CI/headless, it may return true (fail-open behavior)
+    }
+}

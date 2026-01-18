@@ -30,7 +30,7 @@ uuid = { version = "1.19", features = ["v4"] }
 notify = "6.1"
 chrono = "0.4"
 rodio = "0.19"
-user-idle2 = { version = "0.6.2" }
+user-idle2 = { git = "https://github.com/ErdemGKSL/user-idle2-rs.git", features = ["evdev"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-service = { version = "0.7", optional = true }
