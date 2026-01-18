@@ -68,6 +68,21 @@ fn play_sound(sound_path: &str) {
     });
 }
 
+/// Check if the user is currently active (not idle)
+/// Returns true if user is active, or if we can't determine idle status
+fn is_user_active() -> bool {
+    const IDLE_THRESHOLD_SECONDS: u64 = 60;
+    
+    match user_idle::UserIdle::get_time() {
+        Ok(idle) => idle.as_seconds() < IDLE_THRESHOLD_SECONDS,
+        Err(e) => {
+            // Fail-open: if we can't detect idle status, assume user is active
+            eprintln!("Warning: Could not detect idle status: {:?}", e);
+            true
+        }
+    }
+}
+
 #[allow(unused)]
 #[derive(Debug, Clone)]
 struct LastMessageCache {
@@ -428,8 +443,8 @@ impl NotificationService {
                                                 if automation.enabled && 
                                                    automation.automation_type == AutomationType::Immediate &&
                                                    automation.chat_ids.contains(chat_id) {
-                                                    // Trigger focus action
-                                                    if automation.focus_chat {
+                                                    // Trigger focus action (only if user is active)
+                                                    if automation.focus_chat && is_user_active() {
                                                         let result = app_state.with_client(|client| {
                                                             tokio::task::block_in_place(|| {
                                                                 tokio::runtime::Handle::current().block_on(async {
@@ -588,12 +603,14 @@ impl NotificationService {
                                             chat.unread_count > 0
                                         }
                                         LoopUntil::Answer => {
+                                            println!("Loop automation '{}': Checking Answer condition for chat {}", automation.name, chat_id);
                                             // Check if last message is from me (I answered)
                                             // If last message is from me, stop notifying
                                             // If last message is from them, keep notifying
                                             if let Some(is_sender) = latest_message.is_sender {
                                                 !is_sender // Keep notifying if last message is NOT from me
                                             } else {
+                                                println!("Loop automation '{}': is_sender not available for last message in chat {}", automation.name, chat_id);
                                                 // If is_sender is not available, fall back to unread count
                                                 chat.unread_count > 0
                                             }
@@ -631,8 +648,8 @@ impl NotificationService {
                                         println!("Loop automation '{}': Chat {} needs notification (unread: {})", 
                                             automation.name, chat_id, chat.unread_count);
                                         
-                                        // Trigger focus action
-                                        if automation.focus_chat {
+                                        // Trigger focus action (only if user is active)
+                                        if automation.focus_chat && is_user_active() {
                                             let result = app_state.with_client(|client| {
                                                 tokio::task::block_in_place(|| {
                                                     tokio::runtime::Handle::current().block_on(async {
