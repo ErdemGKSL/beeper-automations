@@ -2557,7 +2557,7 @@ checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 [[package]]
 name = "user-idle2"
 version = "0.6.2"
-source = "git+https://github.com/ErdemGKSL/user-idle2-rs.git#3e45a976fd0c64200c63ce7dec34459e83b08da6"
+source = "git+https://github.com/ErdemGKSL/user-idle2-rs.git#e4b591d8ca2fde03b037139e7398d493add178df"
 dependencies = [
  "CoreFoundation-sys",
  "IOKit-sys",
