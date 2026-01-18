@@ -115,7 +115,7 @@ dependencies = [
  "thiserror 2.0.17",
  "tokio",
  "toml",
- "user-idle",
+ "user-idle2",
  "uuid",
  "windows-service",
 ]
@@ -1788,7 +1788,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2490,10 +2490,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 
 [[package]]
-name = "user-idle"
-version = "0.6.0"
+name = "user-idle2"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "433621584802937d26ab1b490236d802a9bc6d7176fe913cc12c2e51a790d5a2"
+checksum = "a5bca33e3c575387dbc8bc8984bb9e86276a20f6a6516b85a0efc41ef39cd255"
 dependencies = [
  "CoreFoundation-sys",
  "IOKit-sys",

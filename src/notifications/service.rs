@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
+use user_idle2::UserIdle;
 use std::path::Path;
 
 /// Play a sound file (supports .wav and .mp3)
@@ -73,7 +74,7 @@ fn play_sound(sound_path: &str) {
 fn is_user_active() -> bool {
     const IDLE_THRESHOLD_SECONDS: u64 = 60;
     
-    match user_idle::UserIdle::get_time() {
+    match UserIdle::get_time() {
         Ok(idle) => idle.as_seconds() < IDLE_THRESHOLD_SECONDS,
         Err(e) => {
             // Fail-open: if we can't detect idle status, assume user is active
