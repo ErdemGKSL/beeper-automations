@@ -23,7 +23,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libasound2-dev pkg-config
+        sudo apt-get install -y libasound2-dev pkg-config libdbus-1-dev libxss-dev
     
     - name: Install Rust
       uses: dtolnay/rust-toolchain@nightly
@@ -84,7 +84,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y libasound2-dev pkg-config
+        sudo apt-get install -y libasound2-dev pkg-config libdbus-1-dev libxss-dev
     
     - name: Install Rust
       uses: dtolnay/rust-toolchain@nightly
