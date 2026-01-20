@@ -1,10 +1,10 @@
 # Beeper Automations Windows Installer
-# Usage: powershell -c "irm https://github.com/ErdemGKSL/beeper-auotmations/releases/latest/download/install.ps1 | iex"
+# Usage: powershell -c "irm https://github.com/ErdemGKSL/beeper-automations/releases/latest/download/install.ps1 | iex"
 
 $ErrorActionPreference = "Stop"
 
 # Configuration
-$GITHUB_REPO = "ErdemGKSL/beeper-auotmations"
+$GITHUB_REPO = "ErdemGKSL/beeper-automations"
 $SERVICE_NAME = "auto-beeper-service"
 $WINDOWS_SERVICE_NAME = "auto-beeper-windows-service"
 $CONFIGURATOR_NAME = "auto-beeper-configurator"

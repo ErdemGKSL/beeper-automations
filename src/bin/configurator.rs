@@ -1,8 +1,8 @@
 use anyhow::Result;
-use beeper_auotmations::api_check::validate_api;
-use beeper_auotmations::app_state::SharedAppState;
-use beeper_auotmations::config::Config;
-use beeper_auotmations::tui::{
+use beeper_automations::api_check::validate_api;
+use beeper_automations::app_state::SharedAppState;
+use beeper_automations::config::Config;
+use beeper_automations::tui::{
     MenuOption, show_config_screen, show_loading_screen, show_main_screen, show_notification_screen,
 };
 use std::path::PathBuf;

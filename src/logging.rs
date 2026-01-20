@@ -120,7 +120,7 @@ pub fn init_logging(windows_service_mode: bool) {
         // Initialize tracing with file layer and filter to exclude notify traces
         let filter = EnvFilter::new("info")
             .add_directive("notify=warn".parse().unwrap())
-            .add_directive("beeper_auotmations=trace".parse().unwrap());
+            .add_directive("beeper_automations=trace".parse().unwrap());
         
         tracing_subscriber::registry()
             .with(filter)

@@ -16,7 +16,7 @@ const SERVICE_NAME: &str = "BeeperAutomations";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
 // Use the shared logging function
-use beeper_auotmations::logging::log_to_file;
+use beeper_automations::logging::log_to_file;
 
 define_windows_service!(ffi_service_main, service_main);
 
@@ -42,7 +42,7 @@ fn service_main(_arguments: Vec<OsString>) {
     write_crash_log("service_main() called");
 
     // Initialize tracing for Windows service mode BEFORE any other logging
-    beeper_auotmations::logging::init_logging(true);
+    beeper_automations::logging::init_logging(true);
     log_to_file("Windows service wrapper started");
 
     write_crash_log("Logging initialized, about to call run_service()");
@@ -141,12 +141,12 @@ fn run_service() -> windows_service::Result<()> {
     })?;
 
     log_to_file("Service status set to Running");
-    log_to_file("About to call beeper_auotmations::run_service_with_shutdown()");
+    log_to_file("About to call beeper_automations::run_service_with_shutdown()");
 
     // Run the service and wait for shutdown signal
     let result = runtime.block_on(async {
         tokio::select! {
-            result = beeper_auotmations::run_service_with_shutdown(shutdown_rx) => {
+            result = beeper_automations::run_service_with_shutdown(shutdown_rx) => {
                 if let Err(e) = result {
                     log_to_file(&format!("Service error: {}", e));
                     log_to_file(&format!("Error details: {:?}", e));
