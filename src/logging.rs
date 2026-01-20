@@ -2,7 +2,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::Mutex;
 use tracing::Subscriber;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer, EnvFilter};
 
 const MAX_LOG_LINES: usize = 1500;
 
@@ -117,8 +117,15 @@ pub fn init_logging(windows_service_mode: bool) {
             }
         }
 
-        // Initialize tracing with file layer only
-        tracing_subscriber::registry().with(FileLayer).init();
+        // Initialize tracing with file layer and filter to exclude notify traces
+        let filter = EnvFilter::new("info")
+            .add_directive("notify=warn".parse().unwrap())
+            .add_directive("beeper_auotmations=trace".parse().unwrap());
+        
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(FileLayer)
+            .init();
 
         log_to_file("Tracing initialized for Windows Service mode");
     } else {
