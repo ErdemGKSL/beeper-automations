@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [[bin]]
+name = "auto-beeper-service"
+path = "src/bin/service.rs"
+
+[[bin]]
 name = "auto-beeper-configurator"
 path = "src/bin/configurator.rs"
 
