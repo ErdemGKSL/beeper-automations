@@ -136,8 +136,8 @@ fn print_config_status(config: &config::Config) {
 pub async fn run_service_with_shutdown(
     mut shutdown_rx: tokio::sync::mpsc::Receiver<()>,
 ) -> Result<()> {
-    // Initialize logging for Windows service mode (redirects to file)
-    crate::logging::init_logging(true);
+    // Note: Logging is already initialized by the Windows service wrapper
+    // Do NOT call init_logging() again here as it will cause a panic
 
     tracing::info!("Starting Beeper Automations Service (Windows Service mode)");
     println!("Starting Beeper Automations Service (Windows Service mode)...");
