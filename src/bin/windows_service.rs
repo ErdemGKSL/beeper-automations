@@ -1,5 +1,14 @@
 #![cfg(windows)]
 
+// Windows Service (Session 0) Implementation
+//
+// NOTE: Windows services run in Session 0 (non-interactive), which may prevent
+// proper user idle detection. For accurate idle detection, install as a User Service
+// via install-user-service.ps1, which runs in the interactive user session.
+//
+// The user idle detection code in is_user_active() includes a fallback that detects
+// Session 0 and assumes the user is active when running as a Windows service.
+
 use std::ffi::OsString;
 use std::time::Duration;
 use windows_service::{
@@ -44,6 +53,10 @@ fn service_main(_arguments: Vec<OsString>) {
     // Initialize tracing for Windows service mode BEFORE any other logging
     beeper_automations::logging::init_logging(true);
     log_to_file("Windows service wrapper started");
+
+    log_to_file("WARNING: Running as Windows Service (Session 0)");
+    log_to_file("WARNING: User idle detection may not work properly in service mode");
+    log_to_file("WARNING: For proper idle detection, install as User Service via install-user-service.ps1");
 
     write_crash_log("Logging initialized, about to call run_service()");
 

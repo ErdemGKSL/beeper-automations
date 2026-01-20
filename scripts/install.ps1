@@ -9,8 +9,9 @@ $SERVICE_NAME = "auto-beeper-service"
 $WINDOWS_SERVICE_NAME = "auto-beeper-windows-service"
 $CONFIGURATOR_NAME = "auto-beeper-configurator"
 $INSTALL_DIR = "$env:ProgramFiles\BeeperAutomations"
+$SCHEDULED_TASK_NAME = "BeeperAutomations"
 $SERVICE_DISPLAY_NAME = "Beeper Automations Service"
-$SERVICE_DESCRIPTION = "Background service for Beeper automations"
+$SERVICE_DESCRIPTION = "Background service for Beeper automations (runs in user session)"
 
 # Color functions
 function Write-InfoMessage {
@@ -89,23 +90,17 @@ function Get-Binaries {
     
     $baseUrl = "https://github.com/$GITHUB_REPO/releases/download/$Tag"
     $serviceBinary = "$SERVICE_NAME-$Target.exe"
-    $windowsServiceBinary = "$WINDOWS_SERVICE_NAME-$Target.exe"
     $configuratorBinary = "$CONFIGURATOR_NAME-$Target.exe"
     
     $serviceUrl = "$baseUrl/$serviceBinary"
-    $windowsServiceUrl = "$baseUrl/$windowsServiceBinary"
     $configuratorUrl = "$baseUrl/$configuratorBinary"
     
     $servicePath = Join-Path $tempDir "$SERVICE_NAME.exe"
-    $windowsServicePath = Join-Path $tempDir "$WINDOWS_SERVICE_NAME.exe"
     $configuratorPath = Join-Path $tempDir "$CONFIGURATOR_NAME.exe"
     
     try {
         Write-InfoMessage "Downloading service binary..."
         Invoke-WebRequest -Uri $serviceUrl -OutFile $servicePath -UseBasicParsing
-        
-        Write-InfoMessage "Downloading Windows service binary..."
-        Invoke-WebRequest -Uri $windowsServiceUrl -OutFile $windowsServicePath -UseBasicParsing
         
         Write-InfoMessage "Downloading configurator binary..."
         Invoke-WebRequest -Uri $configuratorUrl -OutFile $configuratorPath -UseBasicParsing
@@ -131,14 +126,14 @@ function Install-Binaries {
         New-Item -ItemType Directory -Path $INSTALL_DIR -Force | Out-Null
     }
     
-    # Check if service is running and stop it
-    $existingService = Get-Service -Name "BeeperAutomations" -ErrorAction SilentlyContinue
+    # Check if scheduled task is running and stop it
+    $existingTask = Get-ScheduledTask -TaskName $SCHEDULED_TASK_NAME -ErrorAction SilentlyContinue
     $wasRunning = $false
     
-    if ($existingService) {
-        if ($existingService.Status -eq "Running") {
-            Write-InfoMessage "Stopping existing service for update..."
-            Stop-Service -Name "BeeperAutomations" -Force
+    if ($existingTask) {
+        if ($existingTask.State -eq "Running") {
+            Write-InfoMessage "Stopping existing scheduled task for update..."
+            Stop-ScheduledTask -TaskName $SCHEDULED_TASK_NAME -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 3
             $wasRunning = $true
         }
@@ -147,7 +142,6 @@ function Install-Binaries {
     # Copy binaries
     try {
         Copy-Item -Path (Join-Path $SourceDir "$SERVICE_NAME.exe") -Destination $INSTALL_DIR -Force
-        Copy-Item -Path (Join-Path $SourceDir "$WINDOWS_SERVICE_NAME.exe") -Destination $INSTALL_DIR -Force
         Copy-Item -Path (Join-Path $SourceDir "$CONFIGURATOR_NAME.exe") -Destination $INSTALL_DIR -Force
         
         Write-InfoMessage "Binaries installed successfully"
@@ -155,10 +149,10 @@ function Install-Binaries {
     catch {
         Write-ErrorMessage "Failed to copy binaries: $_"
         
-        # Try to restart service if it was running
+        # Try to restart scheduled task if it was running
         if ($wasRunning) {
-            Write-InfoMessage "Attempting to restart service..."
-            Start-Service -Name "BeeperAutomations" -ErrorAction SilentlyContinue
+            Write-InfoMessage "Attempting to restart scheduled task..."
+            Start-ScheduledTask -TaskName $SCHEDULED_TASK_NAME -ErrorAction SilentlyContinue
         }
         
         throw
@@ -168,85 +162,102 @@ function Install-Binaries {
     return $wasRunning
 }
 
-# Setup Windows service
-function Install-WindowsService {
+# Setup Scheduled Task
+function Install-ScheduledTask {
     param([bool]$WasRunning = $false)
     
-    Write-InfoMessage "Setting up Windows service..."
+    Write-InfoMessage "Setting up user service (Scheduled Task)..."
     
-    $servicePath = Join-Path $INSTALL_DIR "$WINDOWS_SERVICE_NAME.exe"
+    $servicePath = Join-Path $INSTALL_DIR "$SERVICE_NAME.exe"
     
-    # Check if service already exists
-    $existingService = Get-Service -Name "BeeperAutomations" -ErrorAction SilentlyContinue
+    # Initialize directories
+    $ProgramDataDir = Join-Path $env:ProgramData "BeeperAutomations"
+    if (-not (Test-Path $ProgramDataDir)) {
+        New-Item -ItemType Directory -Path $ProgramDataDir -Force | Out-Null
+    }
     
-    if ($existingService) {
-        Write-InfoMessage "Service already exists..."
+    # Check if old Windows service exists and remove it
+    $oldService = Get-Service -Name "BeeperAutomations" -ErrorAction SilentlyContinue
+    if ($oldService) {
+        Write-WarnMessage "Old Windows service found. Removing it..."
+        
+        # Stop the service if running
+        if ($oldService.Status -eq "Running") {
+            Write-InfoMessage "Stopping old Windows service..."
+            Stop-Service -Name "BeeperAutomations" -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 3
+        }
+        
+        # Delete the service
+        Write-InfoMessage "Deleting old Windows service..."
+        sc.exe delete "BeeperAutomations" | Out-Null
+        Start-Sleep -Seconds 2
+        Write-InfoMessage "Old Windows service removed"
+    }
+    
+    # Check if scheduled task already exists
+    $existingTask = Get-ScheduledTask -TaskName $SCHEDULED_TASK_NAME -ErrorAction SilentlyContinue
+    
+    if ($existingTask) {
+        Write-InfoMessage "Scheduled task already exists..."
         
         # If it's still running somehow, stop it
-        if ($existingService.Status -eq "Running") {
-            Stop-Service -Name "BeeperAutomations" -Force
+        if ($existingTask.State -eq "Running") {
+            Stop-ScheduledTask -TaskName $SCHEDULED_TASK_NAME -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 2
         }
         
-        # Only recreate if not updating an existing installation
-        if (-not $WasRunning) {
-            Write-InfoMessage "Removing old service configuration..."
-            sc.exe delete "BeeperAutomations" | Out-Null
-            Start-Sleep -Seconds 2
-            
-            # Create new service
-            Write-InfoMessage "Creating service..."
-            $createResult = sc.exe create "BeeperAutomations" `
-                binPath= "`"$servicePath`"" `
-                DisplayName= "$SERVICE_DISPLAY_NAME" `
-                start= auto `
-                obj= "LocalSystem"
-            
-            if ($LASTEXITCODE -ne 0) {
-                Write-ErrorMessage "Failed to create service: $createResult"
-                exit 1
-            }
-            
-            # Set service description
-            sc.exe description "BeeperAutomations" "$SERVICE_DESCRIPTION" | Out-Null
-            
-            # Configure service recovery options (restart on failure)
-            sc.exe failure "BeeperAutomations" reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
-        }
-        
-        # Start the service (whether it's new or updated)
-        Write-InfoMessage "Starting service..."
-        Start-Service -Name "BeeperAutomations"
-        Write-InfoMessage "Service started successfully"
-    }
-    else {
-        # Service doesn't exist, create it
-        Write-InfoMessage "Creating service..."
-        $createResult = sc.exe create "BeeperAutomations" `
-            binPath= "`"$servicePath`"" `
-            DisplayName= "$SERVICE_DISPLAY_NAME" `
-            start= auto `
-            obj= "LocalSystem"
-        
-        if ($LASTEXITCODE -ne 0) {
-            Write-ErrorMessage "Failed to create service: $createResult"
-            exit 1
-        }
-        
-        # Set service description
-        sc.exe description "BeeperAutomations" "$SERVICE_DESCRIPTION" | Out-Null
-        
-        # Configure service recovery options (restart on failure)
-        sc.exe failure "BeeperAutomations" reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
-        
-        # Start the service
-        Write-InfoMessage "Starting service..."
-        Start-Service -Name "BeeperAutomations"
-        
-        Write-InfoMessage "Service installed and started successfully"
+        # Remove old task configuration
+        Write-InfoMessage "Removing old scheduled task..."
+        Unregister-ScheduledTask -TaskName $SCHEDULED_TASK_NAME -Confirm:$false -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 1
     }
     
-    Write-InfoMessage "Use 'sc query BeeperAutomations' to check service status"
+    # Create the scheduled task trigger (at logon)
+    $trigger = New-ScheduledTaskTrigger -AtLogOn
+    
+    # Create the scheduled task action
+    $action = New-ScheduledTaskAction `
+        -Execute $servicePath `
+        -WorkingDirectory $INSTALL_DIR
+    
+    # Create principal to run as the logged-on user with highest privileges
+    $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
+    
+    # Create settings for the task
+    $settings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable `
+        -RestartCount 3 `
+        -RestartInterval (New-TimeSpan -Minutes 1) `
+        -ExecutionTimeLimit (New-TimeSpan -Days 365) `
+        -MultipleInstances IgnoreNew
+    
+    # Register the scheduled task
+    Write-InfoMessage "Creating scheduled task..."
+    Register-ScheduledTask `
+        -TaskName $SCHEDULED_TASK_NAME `
+        -Description $SERVICE_DESCRIPTION `
+        -Action $action `
+        -Trigger $trigger `
+        -Principal $principal `
+        -Settings $settings `
+        -Force | Out-Null
+    
+    Write-InfoMessage "Scheduled task created successfully"
+    
+    # Start the task if user is currently logged in
+    Write-InfoMessage "Starting scheduled task..."
+    try {
+        Start-ScheduledTask -TaskName $SCHEDULED_TASK_NAME -ErrorAction Stop
+        Write-InfoMessage "Scheduled task started successfully"
+    }
+    catch {
+        Write-WarnMessage "Could not start scheduled task (user may not be logged in). It will start automatically on next logon."
+    }
+    
+    Write-InfoMessage "Use 'Get-ScheduledTask -TaskName $SCHEDULED_TASK_NAME' to check task status"
 }
 
 # Add to PATH
@@ -316,21 +327,23 @@ function Main {
         # Add to PATH
         Add-ToPath
         
-        # Setup service (pass whether it was running)
-        Install-WindowsService -WasRunning $wasRunning
+        # Setup scheduled task (pass whether it was running)
+        Install-ScheduledTask -WasRunning $wasRunning
         
         Write-Host ""
         Write-InfoMessage "✓ Installation complete!"
-        Write-InfoMessage "Service binary (console): $INSTALL_DIR\$SERVICE_NAME.exe"
-        Write-InfoMessage "Service binary (Windows): $INSTALL_DIR\$WINDOWS_SERVICE_NAME.exe"
+        Write-InfoMessage "Service binary: $INSTALL_DIR\$SERVICE_NAME.exe"
         Write-InfoMessage "Configurator: $INSTALL_DIR\$CONFIGURATOR_NAME.exe"
         Write-Host ""
-        Write-InfoMessage "The service is now running in the background as a native Windows service."
+        Write-InfoMessage "The service is configured as a user service (runs in your session)."
+        Write-InfoMessage "It will automatically start when you log in to Windows."
+        Write-InfoMessage "This enables proper user idle detection."
+        Write-Host ""
         Write-InfoMessage "You can manage it using:"
-        Write-InfoMessage "  - Start: Start-Service BeeperAutomations"
-        Write-InfoMessage "  - Stop: Stop-Service BeeperAutomations"
-        Write-InfoMessage "  - Status: Get-Service BeeperAutomations"
-        Write-InfoMessage "  - Restart: Restart-Service BeeperAutomations"
+        Write-InfoMessage "  - Start: Start-ScheduledTask -TaskName '$SCHEDULED_TASK_NAME'"
+        Write-InfoMessage "  - Stop: Stop-ScheduledTask -TaskName '$SCHEDULED_TASK_NAME'"
+        Write-InfoMessage "  - Status: Get-ScheduledTask -TaskName '$SCHEDULED_TASK_NAME'"
+        Write-InfoMessage "  - Restart: Stop-ScheduledTask -TaskName '$SCHEDULED_TASK_NAME'; Start-ScheduledTask -TaskName '$SCHEDULED_TASK_NAME'"
         Write-Host ""
         Write-InfoMessage "Run '$CONFIGURATOR_NAME' to configure automations"
         Write-InfoMessage "The service will automatically pick up configuration changes"

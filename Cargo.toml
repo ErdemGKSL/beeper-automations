@@ -36,6 +36,7 @@ user-idle2 = { git = "https://github.com/ErdemGKSL/user-idle2-rs.git", features 
 
 [target.'cfg(windows)'.dependencies]
 windows-service = { version = "0.7", optional = true }
+windows = { version = "0.58", features = ["Win32"] }
 
 [features]
 windows-service = ["dep:windows-service"]
