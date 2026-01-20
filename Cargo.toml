@@ -4,17 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "auto-beeper-service"
-path = "src/bin/service.rs"
-
-[[bin]]
 name = "auto-beeper-configurator"
 path = "src/bin/configurator.rs"
 
 [[bin]]
 name = "auto-beeper-windows-service"
 path = "src/bin/windows_service.rs"
-required-features = ["windows-service"]
 
 [dependencies]
 beeper-desktop-api = "0.1.1"
@@ -36,7 +31,7 @@ user-idle2 = { git = "https://github.com/ErdemGKSL/user-idle2-rs.git", features 
 
 [target.'cfg(windows)'.dependencies]
 windows-service = { version = "0.7", optional = true }
-windows = { version = "0.58", features = ["Win32"] }
+windows = { version = "0.58", features = ["Win32", "Win32_UI_WindowsAndMessaging", "Win32_System_Console"] }
 
 [features]
 windows-service = ["dep:windows-service"]
