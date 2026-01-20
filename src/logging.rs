@@ -72,6 +72,14 @@ pub fn init_logging(windows_service_mode: bool) {
                 event: &tracing::Event<'_>,
                 _ctx: tracing_subscriber::layer::Context<'_, S>,
             ) {
+                let target = event.metadata().target();
+                
+                // Filter out notify crate logs to prevent feedback loop
+                // (notify detects changes to service.log file itself)
+                if target.starts_with("notify") {
+                    return;
+                }
+
                 let mut message = String::new();
                 let mut visitor = |field: &tracing::field::Field, value: &dyn std::fmt::Debug| {
                     use std::fmt::Write;
@@ -85,7 +93,6 @@ pub fn init_logging(windows_service_mode: bool) {
                 event.record(&mut visitor);
 
                 let level = event.metadata().level();
-                let target = event.metadata().target();
                 let file = event.metadata().file();
                 let line = event.metadata().line();
 
