@@ -1,6 +1,7 @@
 pub mod api_check;
 pub mod app_state;
 pub mod config;
+pub mod logging;
 pub mod notifications;
 pub mod tui;
 
@@ -9,6 +10,9 @@ use notify::{Event, RecursiveMode, Watcher};
 use tokio::signal;
 
 pub async fn run_service() -> Result<()> {
+    // Initialize logging for console mode
+    crate::logging::init_logging(false);
+
     println!("Starting Beeper Automations Service...");
 
     // Load configuration
@@ -132,6 +136,10 @@ fn print_config_status(config: &config::Config) {
 pub async fn run_service_with_shutdown(
     mut shutdown_rx: tokio::sync::mpsc::Receiver<()>,
 ) -> Result<()> {
+    // Initialize logging for Windows service mode (redirects to file)
+    crate::logging::init_logging(true);
+
+    tracing::info!("Starting Beeper Automations Service (Windows Service mode)");
     println!("Starting Beeper Automations Service (Windows Service mode)...");
 
     // Load configuration

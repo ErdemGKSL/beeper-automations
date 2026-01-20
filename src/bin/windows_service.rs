@@ -1,8 +1,6 @@
 #![cfg(windows)]
 
 use std::ffi::OsString;
-use std::fs::OpenOptions;
-use std::io::Write;
 use std::time::Duration;
 use windows_service::{
     define_windows_service,
@@ -16,47 +14,16 @@ use windows_service::{
 
 const SERVICE_NAME: &str = "BeeperAutomations";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
-const MAX_LOG_LINES: usize = 500;
 
-fn log_to_file(msg: &str) {
-    let log_path = std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string())
-        + "\\BeeperAutomations\\service.log";
-
-    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-    let new_line = format!("[{}] {}", timestamp, msg);
-
-    // Read existing lines if file exists
-    let mut lines = if let Ok(content) = std::fs::read_to_string(&log_path) {
-        content.lines().map(String::from).collect::<Vec<_>>()
-    } else {
-        Vec::new()
-    };
-
-    // Add new line
-    lines.push(new_line);
-
-    // Keep only last MAX_LOG_LINES
-    if lines.len() > MAX_LOG_LINES {
-        let skip_count = lines.len() - MAX_LOG_LINES;
-        lines = lines.into_iter().skip(skip_count).collect();
-    }
-
-    // Write back to file
-    if let Ok(mut f) = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&log_path)
-    {
-        for line in lines {
-            let _ = writeln!(f, "{}", line);
-        }
-    }
-}
+// Use the shared logging function
+use beeper_auotmations::logging::log_to_file;
 
 define_windows_service!(ffi_service_main, service_main);
 
 fn service_main(_arguments: Vec<OsString>) {
+    // Initialize tracing for Windows service mode BEFORE any other logging
+    beeper_auotmations::logging::init_logging(true);
+
     log_to_file("Windows service wrapper started");
     if let Err(e) = run_service() {
         log_to_file(&format!("Service error: {}", e));

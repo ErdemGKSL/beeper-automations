@@ -12,6 +12,7 @@ use user_idle2::UserIdle;
 
 /// Play a sound file (supports .wav and .mp3)
 fn play_sound(sound_path: &str) {
+    tracing::info!("Playing sound: {}", sound_path);
     use rodio::{Decoder, OutputStream, Sink};
     use std::fs::File;
     use std::io::BufReader;
@@ -75,10 +76,18 @@ fn is_user_active() -> bool {
     const IDLE_THRESHOLD_SECONDS: u64 = 60;
 
     match UserIdle::get_time() {
-        Ok(idle) => idle.as_seconds() < IDLE_THRESHOLD_SECONDS,
+        Ok(idle) => {
+            tracing::debug!("Idle check: user idle for {} seconds", idle.as_seconds());
+            let is_active = idle.as_seconds() < IDLE_THRESHOLD_SECONDS;
+            tracing::info!("Idle status: {} ({} seconds idle, threshold: {} seconds)",
+                if is_active { "ACTIVE" } else { "IDLE" },
+                idle.as_seconds(),
+                IDLE_THRESHOLD_SECONDS);
+            is_active
+        }
         Err(e) => {
             // Fail-open: if we can't detect idle status, assume user is active
-            eprintln!("Warning: Could not detect idle status: {:?}", e);
+            tracing::warn!("Could not detect idle status: {:?}. Assuming user is active.", e);
             true
         }
     }
@@ -150,6 +159,7 @@ impl NotificationService {
         last_messages: Arc<RwLock<HashMap<String, LastMessageCache>>>,
         reload_rx: Arc<RwLock<tokio::sync::mpsc::Receiver<Config>>>,
     ) {
+        tracing::info!("Notification service run loop started");
         // Listen for config reload signals (including initial config)
         loop {
             let new_config = {
@@ -159,7 +169,7 @@ impl NotificationService {
 
             match new_config {
                 Some(config) => {
-                    println!("\n🔄 Hot reloading automations...");
+                    tracing::info!("Hot reloading automations...");
                     Self::handle_config_reload(
                         &app_state,
                         &automation_tasks,
@@ -167,14 +177,15 @@ impl NotificationService {
                         config,
                     )
                     .await;
-                    println!("✓ Hot reload complete.\n");
+                    tracing::info!("Hot reload complete");
                 }
                 None => {
-                    println!("Config reload channel closed, stopping service.");
+                    tracing::info!("Config reload channel closed, stopping service.");
                     break;
                 }
             }
         }
+        tracing::info!("Notification service run loop ended");
     }
 
     async fn handle_config_reload(
@@ -294,7 +305,7 @@ impl NotificationService {
                 if let Some(automation) = new_automations.get(automation_id) {
                     match automation.automation_type {
                         AutomationType::Loop => {
-                            println!("    ✓ Starting loop automation: {}", automation.name);
+                            tracing::info!("Starting loop automation: {} (ID: {})", automation.name, automation.id);
                             let handle = Self::start_loop_automation_static(
                                 app_state.clone(),
                                 (*automation).clone(),
@@ -468,44 +479,48 @@ impl NotificationService {
                                                     && automation.chat_ids.contains(chat_id)
                                                 {
                                                     // Trigger focus action (only if user is active)
-                                                    if automation.focus_chat && is_user_active() {
-                                                        let result = app_state.with_client(|client| {
-                                                            tokio::task::block_in_place(|| {
-                                                                tokio::runtime::Handle::current().block_on(async {
-                                                                    use beeper_desktop_api::FocusAppInput;
-                                                                    
-                                                                    let focus_input = FocusAppInput {
-                                                                        chat_id: Some(chat_id.clone()),
-                                                                        message_id: None,
-                                                                        draft: None,
-                                                                    };
-                                                                    
-                                                                    client.focus_app(Some(focus_input)).await
+                                                    if automation.focus_chat {
+                                                        if is_user_active() {
+                                                            tracing::info!("User is active, proceeding with focus chat action for automation '{}'", automation.name);
+                                                            let result = app_state.with_client(|client| {
+                                                                tokio::task::block_in_place(|| {
+                                                                    tokio::runtime::Handle::current().block_on(async {
+                                                                        use beeper_desktop_api::FocusAppInput;
+
+                                                                        let focus_input = FocusAppInput {
+                                                                            chat_id: Some(chat_id.clone()),
+                                                                            message_id: None,
+                                                                            draft: None,
+                                                                        };
+
+                                                                        client.focus_app(Some(focus_input)).await
+                                                                    })
                                                                 })
-                                                            })
-                                                        });
+                                                            });
 
                                                         match result {
                                                             Ok(Ok(response)) => {
                                                                 if response.success {
-                                                                    println!(
-                                                                        "✓ Focused chat {} for automation '{}'",
-                                                                        chat_id, automation.name
+                                                                    tracing::info!("Successfully focused chat {} for automation '{}'", chat_id, automation.name);
+                                                                }
+                                                            }
+                                                                Ok(Err(e)) => {
+                                                                    tracing::error!("Error focusing chat {}: {}", chat_id, e);
+                                                                    eprintln!(
+                                                                        "Error focusing chat {}: {}",
+                                                                        chat_id, e
+                                                                    );
+                                                                }
+                                                                Err(e) => {
+                                                                    tracing::error!("Error accessing client for focus: {}", e);
+                                                                    eprintln!(
+                                                                        "Error accessing client for focus: {}",
+                                                                        e
                                                                     );
                                                                 }
                                                             }
-                                                            Ok(Err(e)) => {
-                                                                eprintln!(
-                                                                    "Error focusing chat {}: {}",
-                                                                    chat_id, e
-                                                                );
-                                                            }
-                                                            Err(e) => {
-                                                                eprintln!(
-                                                                    "Error accessing client for focus: {}",
-                                                                    e
-                                                                );
-                                                            }
+                                                        } else {
+                                                            tracing::info!("User is idle, skipping focus chat action for automation '{}'", automation.name);
                                                         }
                                                     }
 
@@ -726,48 +741,52 @@ impl NotificationService {
                                         );
 
                                         // Trigger focus action (only if user is active)
-                                        if automation.focus_chat && is_user_active() {
-                                            let result = app_state.with_client(|client| {
-                                                tokio::task::block_in_place(|| {
-                                                    tokio::runtime::Handle::current().block_on(
-                                                        async {
-                                                            use beeper_desktop_api::FocusAppInput;
+                                        if automation.focus_chat {
+                                            if is_user_active() {
+                                                tracing::info!("User is active, proceeding with focus chat action for automation '{}'", automation.name);
+                                                let result = app_state.with_client(|client| {
+                                                    tokio::task::block_in_place(|| {
+                                                        tokio::runtime::Handle::current().block_on(
+                                                            async {
+                                                                use beeper_desktop_api::FocusAppInput;
 
-                                                            let focus_input = FocusAppInput {
-                                                                chat_id: Some(chat_id.clone()),
-                                                                message_id: None,
-                                                                draft: None,
-                                                            };
+                                                                let focus_input = FocusAppInput {
+                                                                    chat_id: Some(chat_id.clone()),
+                                                                    message_id: None,
+                                                                    draft: None,
+                                                                };
 
-                                                            client
-                                                                .focus_app(Some(focus_input))
-                                                                .await
-                                                        },
-                                                    )
-                                                })
-                                            });
+                                                                client
+                                                                    .focus_app(Some(focus_input))
+                                                                    .await
+                                                            },
+                                                        )
+                                                    })
+                                                });
 
-                                            match result {
-                                                Ok(Ok(response)) => {
-                                                    if response.success {
-                                                        println!(
-                                                            "✓ Focused chat {} for automation '{}'",
-                                                            chat_id, automation.name
+                                                match result {
+                                                    Ok(Ok(response)) => {
+                                                        if response.success {
+                                                            tracing::info!("Successfully focused chat {} for automation '{}'", chat_id, automation.name);
+                                                        }
+                                                    }
+                                                    Ok(Err(e)) => {
+                                                        tracing::error!("Error focusing chat {}: {}", chat_id, e);
+                                                        eprintln!(
+                                                            "Error focusing chat {}: {}",
+                                                            chat_id, e
+                                                        );
+                                                    }
+                                                    Err(e) => {
+                                                        tracing::error!("Error accessing client for focus: {}", e);
+                                                        eprintln!(
+                                                            "Error accessing client for focus: {}",
+                                                            e
                                                         );
                                                     }
                                                 }
-                                                Ok(Err(e)) => {
-                                                    eprintln!(
-                                                        "Error focusing chat {}: {}",
-                                                        chat_id, e
-                                                    );
-                                                }
-                                                Err(e) => {
-                                                    eprintln!(
-                                                        "Error accessing client for focus: {}",
-                                                        e
-                                                    );
-                                                }
+                                            } else {
+                                                tracing::info!("User is idle, skipping focus chat action for automation '{}'", automation.name);
                                             }
                                         }
 
