@@ -27,12 +27,25 @@ fn play_sound(sound_path: &str) {
         if Path::new(sound_path).exists() {
             Path::new(sound_path).to_path_buf()
         } else {
-            // Try in ProgramData/BeeperAutomations/sounds
-            let program_data =
-                std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string());
-            let sounds_dir = Path::new(&program_data)
-                .join("BeeperAutomations")
-                .join("sounds");
+            // Try in AppData\Local/BeeperAutomations/sounds (Windows) or XDG state (Linux)
+            #[cfg(windows)]
+            let sounds_dir = {
+                let app_data = std::env::var("LOCALAPPDATA")
+                    .unwrap_or_else(|_| {
+                        let mut path = std::env::var("USERPROFILE")
+                            .unwrap_or_else(|_| ".".to_string());
+                        path.push_str("\\AppData\\Local");
+                        path
+                    });
+                Path::new(&app_data).join("BeeperAutomations").join("sounds")
+            };
+            
+            #[cfg(not(windows))]
+            let sounds_dir = {
+                let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+                Path::new(&home).join(".local/state/beeper-automations/sounds")
+            };
+            
             sounds_dir.join(sound_path)
         }
     };

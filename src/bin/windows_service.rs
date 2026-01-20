@@ -19,16 +19,14 @@ fn hide_console_window() {
 }
 
 async fn main_impl() -> anyhow::Result<()> {
-    use beeper_automations::logging::log_to_file;
+    use beeper_automations::logging::{data_dir, log_to_file};
     
     log_to_file("Beeper Automations User Service started (hidden window)");
     
-    // Set working directory to ProgramData
-    let work_dir = std::env::var("PROGRAMDATA")
-        .unwrap_or_else(|_| "C:\\ProgramData".to_string())
-        + "\\BeeperAutomations";
+    // Set working directory to data directory
+    let work_dir = data_dir();
 
-    log_to_file(&format!("Working directory: {}", work_dir));
+    log_to_file(&format!("Working directory: {:?}", work_dir));
     
     if let Err(e) = std::fs::create_dir_all(&work_dir) {
         log_to_file(&format!("Failed to create work directory: {}", e));

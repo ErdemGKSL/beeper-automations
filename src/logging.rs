@@ -1,18 +1,77 @@
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tracing::Subscriber;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer, EnvFilter};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 
 const MAX_LOG_LINES: usize = 1500;
 
 pub static LOG_FILE_PATH: Mutex<Option<String>> = Mutex::new(None);
 
+/// Get log directory path
+fn log_dir() -> PathBuf {
+    #[cfg(windows)]
+    {
+        // On Windows, use AppData\Local
+        dirs::data_local_dir()
+            .unwrap_or_else(|| {
+                let mut path = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| {
+                    std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string())
+                });
+                path.push_str("\\AppData\\Local");
+                PathBuf::from(path)
+            })
+            .join("BeeperAutomations")
+    }
+
+    #[cfg(not(windows))]
+    {
+        // On Unix systems, use XDG state directory or fallback to ~/.local/state
+        dirs::state_dir().unwrap_or_else(|| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+            PathBuf::from(home).join(".local/state/beeper-automations")
+        })
+    }
+}
+
+/// Get log file path
+fn log_file_path() -> PathBuf {
+    log_dir().join("service.log")
+}
+
+/// Get data directory path (for working directory and state files)
+pub fn data_dir() -> PathBuf {
+    #[cfg(windows)]
+    {
+        // On Windows, use AppData\Local
+        dirs::data_local_dir()
+            .unwrap_or_else(|| {
+                let mut path = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| {
+                    std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string())
+                });
+                path.push_str("\\AppData\\Local");
+                PathBuf::from(path)
+            })
+            .join("BeeperAutomations")
+    }
+
+    #[cfg(not(windows))]
+    {
+        // On Unix systems, use XDG state directory or fallback to ~/.local/state
+        dirs::state_dir().unwrap_or_else(|| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+            PathBuf::from(home).join(".local/state/beeper-automations")
+        })
+    }
+}
+
 pub fn log_to_file(msg: &str) {
-    let log_path = LOG_FILE_PATH.lock().unwrap().clone().unwrap_or_else(|| {
-        std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string())
-            + "\\BeeperAutomations\\service.log"
-    });
+    let log_path = LOG_FILE_PATH
+        .lock()
+        .unwrap()
+        .clone()
+        .unwrap_or_else(|| log_file_path().to_string_lossy().to_string());
 
     let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
     let new_line = format!("[{}] {}", timestamp, msg);
@@ -49,14 +108,13 @@ pub fn log_to_file(msg: &str) {
 pub fn init_logging(windows_service_mode: bool) {
     if windows_service_mode {
         // Set up log file path
-        let log_path = std::env::var("PROGRAMDATA")
-            .unwrap_or_else(|_| "C:\\ProgramData".to_string())
-            + "\\BeeperAutomations\\service.log";
+        let log_path = log_file_path();
+        let log_path_str = log_path.to_string_lossy().to_string();
 
-        *LOG_FILE_PATH.lock().unwrap() = Some(log_path.clone());
+        *LOG_FILE_PATH.lock().unwrap() = Some(log_path_str.clone());
 
         // Create a directory if it doesn't exist
-        if let Some(parent) = std::path::Path::new(&log_path).parent() {
+        if let Some(parent) = log_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
 
@@ -73,7 +131,7 @@ pub fn init_logging(windows_service_mode: bool) {
                 _ctx: tracing_subscriber::layer::Context<'_, S>,
             ) {
                 let target = event.metadata().target();
-                
+
                 // Filter out notify crate logs to prevent feedback loop
                 // (notify detects changes to service.log file itself)
                 if target.starts_with("notify") {
@@ -121,7 +179,7 @@ pub fn init_logging(windows_service_mode: bool) {
         let filter = EnvFilter::new("info")
             .add_directive("notify=warn".parse().unwrap())
             .add_directive("beeper_automations=trace".parse().unwrap());
-        
+
         tracing_subscriber::registry()
             .with(filter)
             .with(FileLayer)

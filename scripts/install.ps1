@@ -168,10 +168,11 @@ function Install-ScheduledTask {
     
     $servicePath = Join-Path $INSTALL_DIR "$SERVICE_NAME.exe"
     
-    # Initialize directories
-    $ProgramDataDir = Join-Path $env:ProgramData "BeeperAutomations"
-    if (-not (Test-Path $ProgramDataDir)) {
-        New-Item -ItemType Directory -Path $ProgramDataDir -Force | Out-Null
+    # Initialize directories (use AppData\Local on Windows)
+    $DataDir = Join-Path $env:LOCALAPPDATA "BeeperAutomations"
+    
+    if (-not (Test-Path $DataDir)) {
+        New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
     }
     
     # Check if old Windows service exists and remove it
