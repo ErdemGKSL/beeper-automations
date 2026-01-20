@@ -6,11 +6,9 @@ $ErrorActionPreference = "Stop"
 # Configuration
 $GITHUB_REPO = "ErdemGKSL/beeper-automations"
 $SERVICE_NAME = "auto-beeper-service"
-$WINDOWS_SERVICE_NAME = "auto-beeper-windows-service"
 $CONFIGURATOR_NAME = "auto-beeper-configurator"
 $INSTALL_DIR = "$env:ProgramFiles\BeeperAutomations"
 $SCHEDULED_TASK_NAME = "BeeperAutomations"
-$SERVICE_DISPLAY_NAME = "Beeper Automations Service"
 $SERVICE_DESCRIPTION = "Background service for Beeper automations (runs in user session)"
 
 # Color functions
