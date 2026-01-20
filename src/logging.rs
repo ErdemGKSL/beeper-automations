@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use tracing::Subscriber;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
-const MAX_LOG_LINES: usize = 500;
+const MAX_LOG_LINES: usize = 1500;
 
 pub static LOG_FILE_PATH: Mutex<Option<String>> = Mutex::new(None);
 
