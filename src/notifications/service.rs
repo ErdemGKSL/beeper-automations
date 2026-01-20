@@ -287,21 +287,25 @@ impl NotificationService {
             // Start the new versions
             for automation_id in &to_restart {
                 if let Some(automation) = new_automations.get(automation_id) {
-                    match automation.automation_type {
+                    tracing::info!("Starting automation: {} (ID: {})", automation.name, automation.id);
+                    let handle = match automation.automation_type {
                         AutomationType::Loop => {
-                            let handle = Self::start_loop_automation_static(
+                            Self::start_loop_automation_static(
                                 app_state.clone(),
                                 (*automation).clone(),
-                            );
-                            tasks.push(AutomationTask {
-                                automation_id: automation_id.clone(),
-                                handle,
-                            });
+                            )
                         }
                         AutomationType::Immediate => {
-                            // Will be handled by immediate watcher restart below
+                            Self::start_immediate_automation_static(
+                                app_state.clone(),
+                                (*automation).clone(),
+                            )
                         }
-                    }
+                    };
+                    tasks.push(AutomationTask {
+                        automation_id: automation_id.clone(),
+                        handle,
+                    });
                 }
             }
         }
@@ -311,114 +315,28 @@ impl NotificationService {
             println!("  Starting {} new automation(s)...", to_start.len());
             let mut tasks = automation_tasks.write().await;
 
-            // Collect immediate automation chat IDs
-            let mut immediate_chat_ids = Vec::new();
-
             for automation_id in &to_start {
                 if let Some(automation) = new_automations.get(automation_id) {
-                    match automation.automation_type {
+                    tracing::info!("Starting automation: {} (ID: {})", automation.name, automation.id);
+                    let handle = match automation.automation_type {
                         AutomationType::Loop => {
-                            tracing::info!("Starting loop automation: {} (ID: {})", automation.name, automation.id);
-                            let handle = Self::start_loop_automation_static(
+                            Self::start_loop_automation_static(
                                 app_state.clone(),
                                 (*automation).clone(),
-                            );
-                            tasks.push(AutomationTask {
-                                automation_id: automation_id.clone(),
-                                handle,
-                            });
+                            )
                         }
                         AutomationType::Immediate => {
-                            immediate_chat_ids.extend(automation.chat_ids.clone());
+                            Self::start_immediate_automation_static(
+                                app_state.clone(),
+                                (*automation).clone(),
+                            )
                         }
-                    }
-                }
-            }
-
-            // Start immediate watcher if needed
-            if !immediate_chat_ids.is_empty() {
-                immediate_chat_ids.sort();
-                immediate_chat_ids.dedup();
-
-                // Check if we already have an immediate watcher
-                let has_immediate = tasks
-                    .iter()
-                    .any(|t| t.automation_id == "__immediate_watcher__");
-
-                if has_immediate {
-                    // Stop old immediate watcher and start new one
-                    println!("    ↻ Restarting immediate automation watcher");
-                    tasks.retain(|task| {
-                        if task.automation_id == "__immediate_watcher__" {
-                            task.handle.abort();
-                            false
-                        } else {
-                            true
-                        }
+                    };
+                    tasks.push(AutomationTask {
+                        automation_id: automation_id.clone(),
+                        handle,
                     });
-                } else {
-                    println!("    ✓ Starting immediate automation watcher");
                 }
-
-                let handle = Self::start_immediate_watcher_static(
-                    app_state.clone(),
-                    last_messages.clone(),
-                    immediate_chat_ids,
-                );
-                tasks.push(AutomationTask {
-                    automation_id: "__immediate_watcher__".to_string(),
-                    handle,
-                });
-            }
-        }
-
-        // Check if we need to handle immediate automations for restarted ones
-        let all_immediate_chat_ids: Vec<String> = new_config
-            .notifications
-            .automations
-            .iter()
-            .filter(|a| a.enabled && a.automation_type == AutomationType::Immediate)
-            .flat_map(|a| a.chat_ids.clone())
-            .collect();
-
-        if !all_immediate_chat_ids.is_empty() {
-            let mut immediate_chat_ids = all_immediate_chat_ids;
-            immediate_chat_ids.sort();
-            immediate_chat_ids.dedup();
-
-            let mut tasks = automation_tasks.write().await;
-            let has_immediate = tasks
-                .iter()
-                .any(|t| t.automation_id == "__immediate_watcher__");
-
-            if has_immediate
-                && to_restart.iter().any(|id| {
-                    new_automations
-                        .get(id)
-                        .map(|a| a.automation_type == AutomationType::Immediate)
-                        .unwrap_or(false)
-                })
-            {
-                // Restart immediate watcher if any immediate automation was modified
-                println!("  Restarting immediate watcher due to modified immediate automation");
-                tasks.retain(|task| {
-                    if task.automation_id == "__immediate_watcher__" {
-                        task.handle.abort();
-                        false
-                    } else {
-                        true
-                    }
-                });
-
-                let handle = Self::start_immediate_watcher_static(
-                    app_state.clone(),
-                    last_messages.clone(),
-                    immediate_chat_ids,
-                );
-                tasks.push(AutomationTask {
-                    automation_id: "__immediate_watcher__".to_string(),
-                    handle,
-                });
             }
         }
 
@@ -435,20 +353,24 @@ impl NotificationService {
         cache.retain(|chat_id, _| all_tracked_chat_ids.contains(chat_id));
     }
 
-    fn start_immediate_watcher_static(
+    fn start_immediate_automation_static(
         app_state: SharedAppState,
-        last_messages: Arc<RwLock<HashMap<String, LastMessageCache>>>,
-        chat_ids: Vec<String>,
+        automation: NotificationAutomation,
     ) -> JoinHandle<()> {
         tokio::spawn(async move {
             println!(
-                "Starting immediate automation watcher for {} chats",
-                chat_ids.len()
+                "Starting immediate automation: {} (ID: {}) for {} chat(s)",
+                automation.name,
+                automation.id,
+                automation.chat_ids.len()
             );
 
+            // Track last seen message per chat for this automation
+            let mut last_messages: HashMap<String, LastMessageCache> = HashMap::new();
+
             loop {
-                // Check each chat for new messages
-                for chat_id in &chat_ids {
+                // Check each chat in this automation for new messages
+                for chat_id in &automation.chat_ids {
                     // Fetch latest message for this chat
                     let result = app_state.with_client(|client| {
                         tokio::task::block_in_place(|| {
@@ -460,18 +382,14 @@ impl NotificationService {
                     match result {
                         Ok(Ok(messages_response)) => {
                             if let Some(latest_message) = messages_response.items.first() {
-                                let mut cache = last_messages.write().await;
-
                                 // Check if this is a new message
-                                if let Some(cached) = cache.get(chat_id) {
-                                    if cached.sort_key < latest_message.sort_key {
-                                        println!(
-                                            "New message detected in chat {}: {}",
-                                            chat_id, latest_message.id
-                                        );
-
-                                        // Update cache
-                                        cache.insert(
+                                let is_new_message = match last_messages.get(chat_id) {
+                                    Some(cached) => {
+                                        cached.sort_key < latest_message.sort_key
+                                    }
+                                    None => {
+                                        // First time seeing this chat, initialize
+                                        last_messages.insert(
                                             chat_id.clone(),
                                             LastMessageCache {
                                                 message_id: latest_message.id.clone(),
@@ -479,83 +397,22 @@ impl NotificationService {
                                                 notification_start_time: None,
                                             },
                                         );
-
-                                        // Drop the lock before async operations
-                                        drop(cache);
-
-                                        // Get the automation config for this chat
-                                        if let Ok(config) = app_state.get_config() {
-                                            for automation in &config.notifications.automations {
-                                                if automation.enabled
-                                                    && automation.automation_type
-                                                        == AutomationType::Immediate
-                                                    && automation.chat_ids.contains(chat_id)
-                                                {
-                                                    // Trigger focus action (only if user is active)
-                                                    if automation.focus_chat {
-                                                        if is_user_active() {
-                                                            tracing::info!("User is active, proceeding with focus chat action for automation '{}'", automation.name);
-                                                            let result = app_state.with_client(|client| {
-                                                                tokio::task::block_in_place(|| {
-                                                                    tokio::runtime::Handle::current().block_on(async {
-                                                                        use beeper_desktop_api::FocusAppInput;
-
-                                                                        let focus_input = FocusAppInput {
-                                                                            chat_id: Some(chat_id.clone()),
-                                                                            message_id: None,
-                                                                            draft: None,
-                                                                        };
-
-                                                                        client.focus_app(Some(focus_input)).await
-                                                                    })
-                                                                })
-                                                            });
-
-                                                        match result {
-                                                            Ok(Ok(response)) => {
-                                                                if response.success {
-                                                                    tracing::info!("Successfully focused chat {} for automation '{}'", chat_id, automation.name);
-                                                                }
-                                                            }
-                                                                Ok(Err(e)) => {
-                                                                    tracing::error!("Error focusing chat {}: {}", chat_id, e);
-                                                                    eprintln!(
-                                                                        "Error focusing chat {}: {}",
-                                                                        chat_id, e
-                                                                    );
-                                                                }
-                                                                Err(e) => {
-                                                                    tracing::error!("Error accessing client for focus: {}", e);
-                                                                    eprintln!(
-                                                                        "Error accessing client for focus: {}",
-                                                                        e
-                                                                    );
-                                                                }
-                                                            }
-                                                        } else {
-                                                            tracing::info!("User is idle, skipping focus chat action for automation '{}'", automation.name);
-                                                        }
-                                                    }
-
-                                                    // Trigger notification sound if configured
-                                                    if let Some(sound_path) =
-                                                        &automation.notification_sound
-                                                    {
-                                                        if !sound_path.is_empty() {
-                                                            println!(
-                                                                "▶ Playing notification sound: {}",
-                                                                sound_path
-                                                            );
-                                                            play_sound(sound_path);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        println!(
+                                            "Immediate automation '{}': Initialized tracking for chat {}",
+                                            automation.name, chat_id
+                                        );
+                                        false // Don't treat first message as new
                                     }
-                                } else {
-                                    // First time seeing this chat, initialize cache
-                                    cache.insert(
+                                };
+
+                                if is_new_message {
+                                    println!(
+                                        "Immediate automation '{}': New message detected in chat {}",
+                                        automation.name, chat_id
+                                    );
+
+                                    // Update cache
+                                    last_messages.insert(
                                         chat_id.clone(),
                                         LastMessageCache {
                                             message_id: latest_message.id.clone(),
@@ -563,15 +420,77 @@ impl NotificationService {
                                             notification_start_time: None,
                                         },
                                     );
-                                    println!("Initialized cache for chat {}", chat_id);
+
+                                    // Trigger focus action (only if user is active)
+                                    if automation.focus_chat {
+                                        if is_user_active() {
+                                            tracing::info!("User is active, proceeding with focus chat action for automation '{}'", automation.name);
+                                            let result = app_state.with_client(|client| {
+                                                tokio::task::block_in_place(|| {
+                                                    tokio::runtime::Handle::current().block_on(async {
+                                                        use beeper_desktop_api::FocusAppInput;
+
+                                                        let focus_input = FocusAppInput {
+                                                            chat_id: Some(chat_id.clone()),
+                                                            message_id: None,
+                                                            draft: None,
+                                                        };
+
+                                                        client.focus_app(Some(focus_input)).await
+                                                    })
+                                                })
+                                            });
+
+                                            match result {
+                                                Ok(Ok(response)) => {
+                                                    if response.success {
+                                                        tracing::info!("Successfully focused chat {} for automation '{}'", chat_id, automation.name);
+                                                    }
+                                                }
+                                                Ok(Err(e)) => {
+                                                    tracing::error!("Error focusing chat {}: {}", chat_id, e);
+                                                    eprintln!(
+                                                        "Error focusing chat {}: {}",
+                                                        chat_id, e
+                                                    );
+                                                }
+                                                Err(e) => {
+                                                    tracing::error!("Error accessing client for focus: {}", e);
+                                                    eprintln!(
+                                                        "Error accessing client for focus: {}",
+                                                        e
+                                                    );
+                                                }
+                                            }
+                                        } else {
+                                            tracing::info!("User is idle, skipping focus chat action for automation '{}'", automation.name);
+                                        }
+                                    }
+
+                                    // Trigger notification sound if configured
+                                    if let Some(sound_path) = &automation.notification_sound {
+                                        if !sound_path.is_empty() {
+                                            println!(
+                                                "▶ Playing notification sound for '{}': {}",
+                                                automation.name, sound_path
+                                            );
+                                            play_sound(sound_path);
+                                        }
+                                    }
                                 }
                             }
                         }
                         Ok(Err(e)) => {
-                            eprintln!("Error fetching messages for chat {}: {}", chat_id, e);
+                            eprintln!(
+                                "Error fetching messages for automation '{}', chat {}: {}",
+                                automation.name, chat_id, e
+                            );
                         }
                         Err(e) => {
-                            eprintln!("Error accessing client for chat {}: {}", chat_id, e);
+                            eprintln!(
+                                "Error accessing client for automation '{}', chat {}: {}",
+                                automation.name, chat_id, e
+                            );
                         }
                     }
                 }
@@ -683,26 +602,32 @@ impl NotificationService {
                                     let should_notify = match loop_config.until {
                                         LoopUntil::MessageSeen => {
                                             // Keep notifying while there are unread messages
-                                            chat.unread_count > 0
+                                            let notify = chat.unread_count > 0;
+                                            tracing::debug!(
+                                                "Loop automation '{}': MessageSeen check for chat {} - unread: {}, notify: {}",
+                                                automation.name, chat_id, chat.unread_count, notify
+                                            );
+                                            notify
                                         }
                                         LoopUntil::Answer => {
-                                            println!(
-                                                "Loop automation '{}': Checking Answer condition for chat {}",
-                                                automation.name, chat_id
-                                            );
                                             // Check if last message is from me (I answered)
                                             // If last message is from me, stop notifying
                                             // If last message is from them, keep notifying
-                                            if let Some(is_sender) = latest_message.is_sender {
+                                            let notify = if let Some(is_sender) = latest_message.is_sender {
                                                 !is_sender // Keep notifying if last message is NOT from me
                                             } else {
-                                                println!(
-                                                    "Loop automation '{}': is_sender not available for last message in chat {}",
+                                                tracing::warn!(
+                                                    "Loop automation '{}': is_sender not available for last message in chat {}, falling back to unread count",
                                                     automation.name, chat_id
                                                 );
                                                 // If is_sender is not available, fall back to unread count
                                                 chat.unread_count > 0
-                                            }
+                                            };
+                                            tracing::debug!(
+                                                "Loop automation '{}': Answer check for chat {} - is_sender: {:?}, notify: {}",
+                                                automation.name, chat_id, latest_message.is_sender, notify
+                                            );
+                                            notify
                                         }
                                         LoopUntil::ForATime => {
                                             // Check if timer has started and not expired for this specific chat
@@ -714,7 +639,7 @@ impl NotificationService {
                                                         if start_time.elapsed().as_millis()
                                                             >= time_limit as u128
                                                         {
-                                                            println!(
+                                                            tracing::debug!(
                                                                 "Loop automation '{}': Time limit reached for chat {}, stopping notifications",
                                                                 automation.name, chat_id
                                                             );
@@ -748,8 +673,8 @@ impl NotificationService {
                                     };
 
                                     if should_notify {
-                                        println!(
-                                            "Loop automation '{}': Chat {} needs notification (unread: {})",
+                                        tracing::info!(
+                                            "Loop automation '{}': Triggering actions for chat {} (unread: {})",
                                             automation.name, chat_id, chat.unread_count
                                         );
 
