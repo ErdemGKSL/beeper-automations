@@ -22,12 +22,37 @@ define_windows_service!(ffi_service_main, service_main);
 
 fn service_main(_arguments: Vec<OsString>) {
     // Initialize tracing for Windows service mode BEFORE any other logging
-    beeper_auotmations::logging::init_logging(true);
+    match std::panic::catch_unwind(|| {
+        beeper_auotmations::logging::init_logging(true);
+        log_to_file("Windows service wrapper started");
+    }) {
+        Ok(_) => {},
+        Err(e) => {
+            // If we can't even initialize logging, try to write to a simple text file
+            let error_msg = format!("PANIC during initialization: {:?}", e);
+            let log_path = std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string())
+                + "\\BeeperAutomations\\service_crash.log";
 
-    log_to_file("Windows service wrapper started");
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .append(true)
+                .open(&log_path)
+            {
+                use std::io::Write;
+                let _ = writeln!(f, "{}", error_msg);
+            }
+            return;
+        }
+    }
+
+    log_to_file("About to call run_service()");
+
     if let Err(e) = run_service() {
         log_to_file(&format!("Service error: {}", e));
+        log_to_file(&format!("Error details: {:?}", e));
     }
+
     log_to_file("Windows service wrapper exiting");
 }
 
@@ -38,12 +63,26 @@ fn run_service() -> windows_service::Result<()> {
     let work_dir = std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string())
         + "\\BeeperAutomations";
 
+    log_to_file(&format!("Creating work directory: {}", work_dir));
     if let Err(e) = std::fs::create_dir_all(&work_dir) {
-        log_to_file(&format!("Failed to create work directory: {}", e));
+        let error_msg = format!("Failed to create work directory: {}", e);
+        log_to_file(&error_msg);
+        log_to_file(&format!("Error details: {:?}", e));
+        return Err(windows_service::Error::Winapi(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            error_msg,
+        )));
     }
 
+    log_to_file(&format!("Setting working directory to: {}", work_dir));
     if let Err(e) = std::env::set_current_dir(&work_dir) {
-        log_to_file(&format!("Failed to set working directory: {}", e));
+        let error_msg = format!("Failed to set working directory: {}", e);
+        log_to_file(&error_msg);
+        log_to_file(&format!("Error details: {:?}", e));
+        return Err(windows_service::Error::Winapi(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            error_msg,
+        )));
     } else {
         log_to_file(&format!("Working directory set to: {}", work_dir));
     }
@@ -103,16 +142,34 @@ fn run_service() -> windows_service::Result<()> {
     log_to_file("About to call beeper_auotmations::run_service_with_shutdown()");
 
     // Run the service and wait for shutdown signal
-    runtime.block_on(async {
-        tokio::select! {
-            result = beeper_auotmations::run_service_with_shutdown(shutdown_rx) => {
-                if let Err(e) = result {
-                    log_to_file(&format!("Service error: {}", e));
+    let result = std::panic::catch_unwind(move || {
+        runtime.block_on(async {
+            tokio::select! {
+                result = beeper_auotmations::run_service_with_shutdown(shutdown_rx) => {
+                    if let Err(e) = result {
+                        log_to_file(&format!("Service error: {}", e));
+                        log_to_file(&format!("Error details: {:?}", e));
+                    }
+                    log_to_file("run_service_with_shutdown() RETURNED");
                 }
-                log_to_file("run_service_with_shutdown() RETURNED");
+            }
+        })
+    });
+
+    match result {
+        Ok(_) => {
+            log_to_file("Service block_on completed successfully");
+        }
+        Err(panic_info) => {
+            let error_msg = format!("PANIC in service: {:?}", panic_info);
+            log_to_file(&error_msg);
+            if let Some(s) = panic_info.downcast_ref::<&str>() {
+                log_to_file(&format!("Panic message: {}", s));
+            } else if let Some(s) = panic_info.downcast_ref::<String>() {
+                log_to_file(&format!("Panic message: {}", s));
             }
         }
-    });
+    }
 
     log_to_file("Service loop exited, initiating shutdown");
 
