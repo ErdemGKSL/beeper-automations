@@ -35,8 +35,7 @@ user-idle2 = { git = "https://github.com/ErdemGKSL/user-idle2-rs.git", features 
 reqwest = { version = "0.12", features = ["blocking"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-service = { version = "0.7", optional = true }
 windows = { version = "0.58", features = ["Win32", "Win32_UI_WindowsAndMessaging", "Win32_System_Console"] }
 
 [features]
-windows-service = ["dep:windows-service"]
+default = []

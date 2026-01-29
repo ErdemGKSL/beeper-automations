@@ -117,6 +117,12 @@ fn send_ntfy_notification(
         return;
     }
 
+    // If trigger_on_idle is true, only send if user is NOT active
+    if ntfy_config.trigger_on_idle && is_user_active() {
+        tracing::info!("User is active, skipping ntfy notification for automation '{}' (trigger_on_idle is true)", automation_name);
+        return;
+    }
+
     // Replace message variables
     let message = ntfy_config.message
         .replace("{sender}", sender)

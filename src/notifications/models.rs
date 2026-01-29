@@ -10,6 +10,8 @@ pub struct NtfyConfig {
     pub message: String,
     #[serde(default = "default_priority")]
     pub priority: u8,
+    #[serde(default)]
+    pub trigger_on_idle: bool,
 }
 
 fn default_priority() -> u8 {
@@ -23,6 +25,7 @@ impl Default for NtfyConfig {
             url: String::new(),
             message: "New message from {sender} in {chat_name}".to_string(),
             priority: 5,
+            trigger_on_idle: false,
         }
     }
 }

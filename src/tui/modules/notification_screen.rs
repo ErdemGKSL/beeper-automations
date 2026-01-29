@@ -72,6 +72,7 @@ pub struct AutomationForm {
     pub ntfy_url: String,
     pub ntfy_message: String,
     pub ntfy_priority: String,
+    pub ntfy_trigger_on_idle: bool,
     pub selected_field: usize, // Current field being edited
 }
 
@@ -92,6 +93,7 @@ impl AutomationForm {
             ntfy_url: String::new(),
             ntfy_message: "New message from {sender} in {chat_name}".to_string(),
             ntfy_priority: "5".to_string(),
+            ntfy_trigger_on_idle: false,
             selected_field: 0,
         }
     }
@@ -112,10 +114,10 @@ impl AutomationForm {
                 )
             };
 
-        let (ntfy_enabled, ntfy_url, ntfy_message, ntfy_priority) = if let Some(ntfy_config) = &automation.ntfy_config {
-            (ntfy_config.enabled, ntfy_config.url.clone(), ntfy_config.message.clone(), ntfy_config.priority.to_string())
+        let (ntfy_enabled, ntfy_url, ntfy_message, ntfy_priority, ntfy_trigger_on_idle) = if let Some(ntfy_config) = &automation.ntfy_config {
+            (ntfy_config.enabled, ntfy_config.url.clone(), ntfy_config.message.clone(), ntfy_config.priority.to_string(), ntfy_config.trigger_on_idle)
         } else {
-            (false, String::new(), "New message from {sender} in {chat_name}".to_string(), "5".to_string())
+            (false, String::new(), "New message from {sender} in {chat_name}".to_string(), "5".to_string(), false)
         };
 
         Self {
@@ -133,6 +135,7 @@ impl AutomationForm {
             ntfy_url,
             ntfy_message,
             ntfy_priority,
+            ntfy_trigger_on_idle,
             selected_field: 0,
         }
     }
@@ -158,6 +161,7 @@ impl AutomationForm {
                 url: self.ntfy_url.clone(),
                 message: self.ntfy_message.clone(),
                 priority: self.ntfy_priority.parse().unwrap_or(5),
+                trigger_on_idle: self.ntfy_trigger_on_idle,
             })
         } else {
             None
@@ -1329,15 +1333,15 @@ impl NotificationScreen {
                 Ok(false)
             }
             KeyCode::Tab | KeyCode::Down => {
-                // 3 fields: url (0), message (1), priority (2)
-                form.selected_field = (form.selected_field + 1) % 3;
+                // 4 fields: url (0), message (1), priority (2), trigger_on_idle (3)
+                form.selected_field = (form.selected_field + 1) % 4;
                 Ok(false)
             }
             KeyCode::BackTab | KeyCode::Up => {
                 if form.selected_field > 0 {
                     form.selected_field -= 1;
                 } else {
-                    form.selected_field = 2;
+                    form.selected_field = 3;
                 }
                 Ok(false)
             }
@@ -1347,6 +1351,12 @@ impl NotificationScreen {
                     1 => { form.ntfy_message.pop(); }
                     2 => { form.ntfy_priority.pop(); }
                     _ => {}
+                }
+                Ok(false)
+            }
+            KeyCode::Char(' ') => {
+                if form.selected_field == 3 {
+                    form.ntfy_trigger_on_idle = !form.ntfy_trigger_on_idle;
                 }
                 Ok(false)
             }
@@ -1397,6 +1407,7 @@ impl NotificationScreen {
             Constraint::Length(3), // 0: URL
             Constraint::Length(3), // 1: Message
             Constraint::Length(3), // 2: Priority
+            Constraint::Length(3), // 3: Trigger on Idle
             Constraint::Min(1),    // Help text
         ];
 
@@ -1432,9 +1443,18 @@ impl NotificationScreen {
             form.selected_field == 2,
         );
 
+        // Field 3: Trigger on Idle
+        self.render_bool_field(
+            f,
+            form_chunks[3],
+            "Only Trigger When Idle",
+            form.ntfy_trigger_on_idle,
+            form.selected_field == 3,
+        );
+
         // Help text
-        let help_text = Paragraph::new("Variables: {sender}, {chat_name}, {automation_name} | Priority: 5 (max), 1 (min)")
+        let help_text = Paragraph::new("Variables: {sender}, {chat_name}, {automation_name} | Priority: 5 (max), 1 (min) | Space to toggle")
             .style(Style::default().fg(Color::DarkGray));
-        f.render_widget(help_text, form_chunks[3]);
+        f.render_widget(help_text, form_chunks[4]);
     }
 }
