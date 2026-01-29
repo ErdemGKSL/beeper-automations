@@ -1366,7 +1366,7 @@ impl NotificationScreen {
     fn render_ntfy_config(&self, f: &mut Frame, size: Rect, form: &AutomationForm) {
         // Calculate modal dimensions
         let modal_width = (size.width as f32 * 0.7).max(50.0) as usize;
-        let modal_height = 14; // Fixed height for 2 fields + help text
+        let modal_height = 17; // Increased height for 3 fields + help text
         let modal_x = (size.width as usize - modal_width) / 2;
         let modal_y = (size.height as usize - modal_height) / 2;
 
