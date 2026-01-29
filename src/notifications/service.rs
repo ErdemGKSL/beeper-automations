@@ -123,7 +123,10 @@ fn send_ntfy_notification(
         .replace("{chat_name}", chat_name)
         .replace("{automation_name}", automation_name);
 
-    let url = ntfy_config.url.clone();
+    let mut url = ntfy_config.url.clone();
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        url = format!("https://{}", url);
+    }
     let priority = ntfy_config.priority;
     tracing::info!("Sending ntfy notification to {}: {} (priority: {})", url, message, priority);
 
