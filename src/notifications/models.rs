@@ -1,6 +1,33 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NtfyConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub message: String,
+    #[serde(default = "default_priority")]
+    pub priority: u8,
+}
+
+fn default_priority() -> u8 {
+    5
+}
+
+impl Default for NtfyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            url: String::new(),
+            message: "New message from {sender} in {chat_name}".to_string(),
+            priority: 5,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotificationAutomation {
     pub id: String,
     pub name: String,
@@ -10,6 +37,8 @@ pub struct NotificationAutomation {
     pub focus_chat: bool,
     pub loop_config: Option<LoopConfig>,
     pub enabled: bool,
+    #[serde(default)]
+    pub ntfy_config: Option<NtfyConfig>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
@@ -72,6 +101,7 @@ impl NotificationAutomation {
             focus_chat: false,
             loop_config: None,
             enabled: true,
+            ntfy_config: None,
         }
     }
 }

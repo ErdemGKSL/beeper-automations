@@ -106,6 +106,50 @@ fn is_user_active() -> bool {
     }
 }
 
+/// Send a notification to ntfy.sh or compatible server
+fn send_ntfy_notification(
+    ntfy_config: &crate::notifications::models::NtfyConfig,
+    automation_name: &str,
+    sender: &str,
+    chat_name: &str,
+) {
+    if !ntfy_config.enabled || ntfy_config.url.is_empty() {
+        return;
+    }
+
+    // Replace message variables
+    let message = ntfy_config.message
+        .replace("{sender}", sender)
+        .replace("{chat_name}", chat_name)
+        .replace("{automation_name}", automation_name);
+
+    let url = ntfy_config.url.clone();
+    let priority = ntfy_config.priority;
+    tracing::info!("Sending ntfy notification to {}: {} (priority: {})", url, message, priority);
+
+    // Spawn a thread to send HTTP request asynchronously
+    std::thread::spawn(move || {
+        match reqwest::blocking::Client::new()
+            .post(&url)
+            .header("X-Priority", priority.to_string())
+            .body(message.clone())
+            .send()
+        {
+            Ok(response) => {
+                if response.status().is_success() {
+                    tracing::info!("Successfully sent ntfy notification");
+                } else {
+                    tracing::error!("Failed to send ntfy notification: HTTP {}", response.status());
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to send ntfy notification: {}", e);
+                eprintln!("Failed to send ntfy notification: {}", e);
+            }
+        }
+    });
+}
+
 #[allow(unused)]
 #[derive(Debug, Clone)]
 struct LastMessageCache {
@@ -477,6 +521,17 @@ impl NotificationService {
                                             play_sound(sound_path);
                                         }
                                     }
+
+                                    // Trigger ntfy notification if configured
+                                    if let Some(ntfy_config) = &automation.ntfy_config {
+                                        let sender = latest_message.sender_name.as_deref().unwrap_or("Unknown");
+                                        send_ntfy_notification(
+                                            ntfy_config,
+                                            &automation.name,
+                                            sender,
+                                            chat_id,
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -737,6 +792,18 @@ impl NotificationService {
                                                 );
                                                 play_sound(sound_path);
                                             }
+                                        }
+
+                                        // Trigger ntfy notification if configured
+                                        if let Some(ntfy_config) = &automation.ntfy_config {
+                                            let sender = latest_message.sender_name.as_deref().unwrap_or("Unknown");
+                                            let chat_name = chat.title.as_str();
+                                            send_ntfy_notification(
+                                                ntfy_config,
+                                                &automation.name,
+                                                sender,
+                                                chat_name,
+                                            );
                                         }
                                     }
                                 }

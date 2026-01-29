@@ -32,6 +32,7 @@ notify = "6.1"
 chrono = "0.4"
 rodio = "0.19"
 user-idle2 = { git = "https://github.com/ErdemGKSL/user-idle2-rs.git", features = ["evdev"] }
+reqwest = { version = "0.12", features = ["blocking"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-service = { version = "0.7", optional = true }

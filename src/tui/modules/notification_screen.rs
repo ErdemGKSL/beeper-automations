@@ -16,6 +16,7 @@ pub enum ScreenState {
     AddingAutomation(AutomationForm),
     SelectingChats(AutomationForm, ChatSelector),
     ConfiguringLoop(AutomationForm),
+    ConfiguringNtfy(AutomationForm),
 }
 
 #[derive(Debug, Clone)]
@@ -67,6 +68,10 @@ pub struct AutomationForm {
     pub notification_sound: String,
     pub focus_chat: bool,
     pub enabled: bool,
+    pub ntfy_enabled: bool,
+    pub ntfy_url: String,
+    pub ntfy_message: String,
+    pub ntfy_priority: String,
     pub selected_field: usize, // Current field being edited
 }
 
@@ -83,6 +88,10 @@ impl AutomationForm {
             notification_sound: String::new(),
             focus_chat: false,
             enabled: true,
+            ntfy_enabled: false,
+            ntfy_url: String::new(),
+            ntfy_message: "New message from {sender} in {chat_name}".to_string(),
+            ntfy_priority: "5".to_string(),
             selected_field: 0,
         }
     }
@@ -103,6 +112,12 @@ impl AutomationForm {
                 )
             };
 
+        let (ntfy_enabled, ntfy_url, ntfy_message, ntfy_priority) = if let Some(ntfy_config) = &automation.ntfy_config {
+            (ntfy_config.enabled, ntfy_config.url.clone(), ntfy_config.message.clone(), ntfy_config.priority.to_string())
+        } else {
+            (false, String::new(), "New message from {sender} in {chat_name}".to_string(), "5".to_string())
+        };
+
         Self {
             id: Some(automation.id.clone()),
             name: automation.name.clone(),
@@ -114,6 +129,10 @@ impl AutomationForm {
             notification_sound: automation.notification_sound.clone().unwrap_or_default(),
             focus_chat: automation.focus_chat,
             enabled: automation.enabled,
+            ntfy_enabled,
+            ntfy_url,
+            ntfy_message,
+            ntfy_priority,
             selected_field: 0,
         }
     }
@@ -128,6 +147,17 @@ impl AutomationForm {
                     None
                 },
                 check_interval: self.check_interval.parse().unwrap_or(3000),
+            })
+        } else {
+            None
+        };
+
+        let ntfy_config = if self.ntfy_enabled || !self.ntfy_url.is_empty() {
+            Some(crate::notifications::NtfyConfig {
+                enabled: self.ntfy_enabled,
+                url: self.ntfy_url.clone(),
+                message: self.ntfy_message.clone(),
+                priority: self.ntfy_priority.parse().unwrap_or(5),
             })
         } else {
             None
@@ -149,13 +179,14 @@ impl AutomationForm {
             focus_chat: self.focus_chat,
             loop_config,
             enabled: self.enabled,
+            ntfy_config,
         }
     }
 
     fn field_count(&self) -> usize {
-        // Base fields: name, chat_ids, type, sound, focus_chat, enabled
-        // Loop configuration is now in a separate screen
-        6
+        // Base fields: name, chat_ids, type, sound, focus_chat, enabled, ntfy
+        // Loop configuration and Ntfy configuration are in separate screens
+        7
     }
 
     fn loop_field_count(&self) -> usize {
@@ -270,6 +301,7 @@ impl NotificationScreen {
             ScreenState::AddingAutomation(_) => self.handle_form_key(key),
             ScreenState::SelectingChats(_, _) => self.handle_chat_selector_key(key),
             ScreenState::ConfiguringLoop(_) => self.handle_loop_config_key(key),
+            ScreenState::ConfiguringNtfy(_) => self.handle_ntfy_config_key(key),
         }
     }
 
@@ -364,6 +396,12 @@ impl NotificationScreen {
                         self.state = ScreenState::ConfiguringLoop(form_clone);
                         return Ok(false);
                     }
+                    6 if form.ntfy_enabled => {
+                        // Open ntfy configuration screen
+                        let form_clone = form.clone();
+                        self.state = ScreenState::ConfiguringNtfy(form_clone);
+                        return Ok(false);
+                    }
                     _ => {}
                 }
 
@@ -423,6 +461,7 @@ impl NotificationScreen {
                     }
                     4 => form.focus_chat = !form.focus_chat, // Toggle focus_chat
                     5 => form.enabled = !form.enabled,       // Toggle enabled
+                    6 => form.ntfy_enabled = !form.ntfy_enabled, // Toggle ntfy
                     _ => {}
                 }
                 Ok(false)
@@ -709,13 +748,16 @@ impl NotificationScreen {
             ScreenState::ConfiguringLoop(form) => {
                 self.render_loop_config(f, size, form);
             }
+            ScreenState::ConfiguringNtfy(form) => {
+                self.render_ntfy_config(f, size, form);
+            }
         }
 
         // Footer
         let footer_text = if !self.message.is_empty() {
             self.message.clone()
         } else {
-            match &self.state {
+                    match &self.state {
                 ScreenState::List => {
                     "↑↓: Navigate | N: New | Enter: Edit | D: Delete | Q/Esc: Back".to_string()
                 }
@@ -733,6 +775,9 @@ impl NotificationScreen {
                 }
                 ScreenState::ConfiguringLoop(_) => {
                     "Tab/↑↓: Navigate | Space: Toggle | Enter: Done | Esc: Cancel".to_string()
+                }
+                ScreenState::ConfiguringNtfy(_) => {
+                    "Tab/↑↓: Navigate | Enter: Done | Esc: Cancel".to_string()
                 }
             }
         };
@@ -822,7 +867,7 @@ impl NotificationScreen {
             height: modal_area.height.saturating_sub(4),
         };
 
-        // All forms have the same 6 base fields
+        // All forms have the same 7 base fields
         let field_constraints = vec![
             Constraint::Length(3), // 0: Name
             Constraint::Length(3), // 1: Chat IDs
@@ -830,6 +875,7 @@ impl NotificationScreen {
             Constraint::Length(3), // 3: Sound
             Constraint::Length(3), // 4: Focus Chat
             Constraint::Length(3), // 5: Enabled
+            Constraint::Length(3), // 6: Ntfy
             Constraint::Min(1),    // Spacer
         ];
 
@@ -903,6 +949,20 @@ impl NotificationScreen {
             "Enabled",
             form.enabled,
             form.selected_field == 5,
+        );
+
+        // Field 6: Ntfy
+        let ntfy_display = if form.ntfy_enabled {
+            "✓ Enabled (Press Enter to configure)".to_string()
+        } else {
+            "✗ Disabled (Press Space to enable)".to_string()
+        };
+        self.render_enum_field(
+            f,
+            form_chunks[6],
+            "Ntfy Push Notification",
+            &ntfy_display,
+            form.selected_field == 6,
         );
     }
 
@@ -1232,5 +1292,149 @@ impl NotificationScreen {
             &form.check_interval,
             form.selected_field == check_interval_field_idx,
         );
+    }
+
+    fn handle_ntfy_config_key(&mut self, key: KeyEvent) -> Result<bool> {
+        let form = match self.state {
+            ScreenState::ConfiguringNtfy(ref mut f) => f,
+            _ => return Ok(false),
+        };
+
+        match key.code {
+            KeyCode::Esc => {
+                // Return to main form
+                let form_clone = form.clone();
+                self.state = if form.id.is_some() {
+                    ScreenState::EditingAutomation(form_clone)
+                } else {
+                    ScreenState::AddingAutomation(form_clone)
+                };
+                Ok(false)
+            }
+            KeyCode::Enter => {
+                // Validate: if ntfy is enabled, URL is required
+                if form.ntfy_enabled && form.ntfy_url.is_empty() {
+                    self.message = "URL is required when ntfy is enabled!".to_string();
+                    return Ok(false);
+                }
+
+                // Save and return to main form
+                let form_clone = form.clone();
+                self.state = if form.id.is_some() {
+                    ScreenState::EditingAutomation(form_clone)
+                } else {
+                    ScreenState::AddingAutomation(form_clone)
+                };
+                self.message = "Ntfy settings configured!".to_string();
+                Ok(false)
+            }
+            KeyCode::Tab | KeyCode::Down => {
+                // 3 fields: url (0), message (1), priority (2)
+                form.selected_field = (form.selected_field + 1) % 3;
+                Ok(false)
+            }
+            KeyCode::BackTab | KeyCode::Up => {
+                if form.selected_field > 0 {
+                    form.selected_field -= 1;
+                } else {
+                    form.selected_field = 2;
+                }
+                Ok(false)
+            }
+            KeyCode::Backspace => {
+                match form.selected_field {
+                    0 => { form.ntfy_url.pop(); }
+                    1 => { form.ntfy_message.pop(); }
+                    2 => { form.ntfy_priority.pop(); }
+                    _ => {}
+                }
+                Ok(false)
+            }
+            KeyCode::Char(c) => {
+                match form.selected_field {
+                    0 => form.ntfy_url.push(c),
+                    1 => form.ntfy_message.push(c),
+                    2 => if c.is_digit(10) { form.ntfy_priority.push(c) },
+                    _ => {}
+                }
+                Ok(false)
+            }
+            _ => Ok(false),
+        }
+    }
+
+    fn render_ntfy_config(&self, f: &mut Frame, size: Rect, form: &AutomationForm) {
+        // Calculate modal dimensions
+        let modal_width = (size.width as f32 * 0.7).max(50.0) as usize;
+        let modal_height = 14; // Fixed height for 2 fields + help text
+        let modal_x = (size.width as usize - modal_width) / 2;
+        let modal_y = (size.height as usize - modal_height) / 2;
+
+        let modal_area = Rect {
+            x: modal_x as u16,
+            y: modal_y as u16,
+            width: modal_width as u16,
+            height: modal_height as u16,
+        };
+
+        // Draw background overlay
+        f.render_widget(Clear, modal_area);
+        let modal_block = Block::default()
+            .title("Ntfy Configuration")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Magenta));
+        f.render_widget(modal_block, modal_area);
+
+        // Create form content area
+        let inner_area = Rect {
+            x: modal_area.x + 2,
+            y: modal_area.y + 2,
+            width: modal_area.width.saturating_sub(4),
+            height: modal_area.height.saturating_sub(4),
+        };
+
+        let field_constraints = vec![
+            Constraint::Length(3), // 0: URL
+            Constraint::Length(3), // 1: Message
+            Constraint::Length(3), // 2: Priority
+            Constraint::Min(1),    // Help text
+        ];
+
+        let form_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(field_constraints)
+            .split(inner_area);
+
+        // Field 0: URL
+        self.render_text_field(
+            f,
+            form_chunks[0],
+            "Ntfy URL (e.g., https://ntfy.sh/mytopic)",
+            &form.ntfy_url,
+            form.selected_field == 0,
+        );
+
+        // Field 1: Message
+        self.render_text_field(
+            f,
+            form_chunks[1],
+            "Message Template (use {sender}, {chat_name}, {automation_name})",
+            &form.ntfy_message,
+            form.selected_field == 1,
+        );
+
+        // Field 2: Priority
+        self.render_text_field(
+            f,
+            form_chunks[2],
+            "Priority (1-5, 5 is max)",
+            &form.ntfy_priority,
+            form.selected_field == 2,
+        );
+
+        // Help text
+        let help_text = Paragraph::new("Variables: {sender}, {chat_name}, {automation_name} | Priority: 5 (max), 1 (min)")
+            .style(Style::default().fg(Color::DarkGray));
+        f.render_widget(help_text, form_chunks[3]);
     }
 }
