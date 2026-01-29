@@ -839,7 +839,7 @@ impl NotificationScreen {
 
         // Calculate modal size (centered, about 70% of screen width and height)
         let modal_width = std::cmp::min((area.width as usize * 70) / 100, 80);
-        let modal_height = std::cmp::min((area.height as usize * 80) / 100, 25);
+        let modal_height = std::cmp::min((area.height as usize * 95) / 100, 25);
 
         let modal_x = (area.width as usize - modal_width) / 2;
         let modal_y = (area.height as usize - modal_height) / 2;
