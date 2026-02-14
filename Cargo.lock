@@ -125,9 +125,9 @@ dependencies = [
 
 [[package]]
 name = "beeper-desktop-api"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d74b6648515375080e46538104423b5cd6d2f329c570d10af74138beb60a7680"
+checksum = "5a8a50e5dc370f7aeccdcba8801a876c37b15def3761c30a62416917e11f6dca"
 dependencies = [
  "chrono",
  "reqwest",
