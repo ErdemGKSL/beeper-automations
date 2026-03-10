@@ -819,14 +819,22 @@ impl NotificationService {
                             }
                         }
                         (Ok(Err(e)), _) | (_, Ok(Err(e))) => {
+                            tracing::error!(
+                                "API error fetching data for automation '{}': {:?}",
+                                automation.name, e
+                            );
                             eprintln!(
-                                "Error fetching data for automation {}: {}",
+                                "Error fetching data for automation {}: {:?}",
                                 automation.name, e
                             );
                         }
                         (Err(e), _) | (_, Err(e)) => {
+                            tracing::error!(
+                                "Client access error for automation '{}': {:?}",
+                                automation.name, e
+                            );
                             eprintln!(
-                                "Error accessing client for automation {}: {}",
+                                "Error accessing client for automation {}: {:?}",
                                 automation.name, e
                             );
                         }

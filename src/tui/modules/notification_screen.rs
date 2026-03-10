@@ -269,7 +269,11 @@ impl NotificationScreen {
 
                                             (chats, response.oldest_cursor, response.has_more)
                                         }
-                                        Err(_) => (Vec::new(), None, false),
+                                        Err(e) => {
+                                            let msg = format!("[CONFIGURATOR] ERROR fetching chats from API: {:?}", e);
+                                            crate::logging::log_to_file(&msg);
+                                            (Vec::new(), None, false)
+                                        },
                                     }
                                 })
                             })
