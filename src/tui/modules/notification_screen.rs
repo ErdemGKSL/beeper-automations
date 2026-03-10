@@ -846,8 +846,13 @@ impl NotificationScreen {
         use ratatui::widgets::Clear;
 
         // Calculate modal size (centered, about 70% of screen width and height)
+        // Height cap raised to 35 so all 7 fields (7×3=21) plus padding (4) fit with room to spare.
+        // The max() guard ensures the modal is never smaller than needed when the terminal is short.
         let modal_width = std::cmp::min((area.width as usize * 70) / 100, 80);
-        let modal_height = std::cmp::min((area.height as usize * 95) / 100, 25);
+        let modal_height = std::cmp::max(
+            std::cmp::min((area.height as usize * 95) / 100, 35),
+            std::cmp::min(25, area.height as usize),
+        );
 
         let modal_x = (area.width as usize - modal_width) / 2;
         let modal_y = (area.height as usize - modal_height) / 2;
